@@ -27,7 +27,7 @@ jobs:
 
       - name: Run OpenAPI Generator Agent
         run: |
-          python test-genie/main.py
+          python openAPISpec-generator/main.py
 
       - name: Upload OpenAPI spec artifact
         uses: actions/upload-artifact@v4
