@@ -39,10 +39,10 @@ graph.add_edge("bdd_node", "execute_node")
 graph.add_edge("execute_node", "result_node")
 graph.add_edge("result_node", END)
 
-# ✅ Set the entry point
+# Set the entry point
 graph.set_entry_point("analysis_node")
 
-# ✅ Compile the graph
+# Compile the graph
 workflow = graph.compile()
 
 

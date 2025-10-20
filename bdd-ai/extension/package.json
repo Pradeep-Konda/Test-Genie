@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["AI", "Testing"],
-  "activationEvents": ["onCommand:extension.generateBDD"],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -26,7 +26,7 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.4.0",
-    "vscode-test": "^2.2.3"
+   "@vscode/test-electron": "^2.3.4"
   },
   "dependencies": {
     "axios": "^1.6.8"

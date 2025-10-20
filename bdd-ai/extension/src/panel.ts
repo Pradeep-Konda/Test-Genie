@@ -9,9 +9,7 @@ export class BDDPanel {
   }
 
   public static show(content: string) {
-    const column = vscode.window.activeTextEditor
-      ? vscode.window.activeTextEditor.viewColumn
-      : vscode.ViewColumn.One;
+    const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
     if (BDDPanel.currentPanel) {
       BDDPanel.currentPanel._panel.reveal(column);

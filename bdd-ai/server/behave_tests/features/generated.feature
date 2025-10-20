@@ -1,49 +1,79 @@
-Certainly! Here are the Gherkin BDD scenarios for the given use cases of the `add` function:
+Certainly! Here are the Gherkin BDD scenarios for your provided use cases:
+
+---
+
+**Feature: Health check of the service**
 
 ```gherkin
-Feature: Add two values
-
-  Scenario: Add two positive integers
-    Given the first value is 1
-    And the second value is 2
-    When I add the two values
-    Then the result should be 3
-
-  Scenario: Add two negative integers
-    Given the first value is -1
-    And the second value is -2
-    When I add the two values
-    Then the result should be -3
-
-  Scenario: Add two zeros
-    Given the first value is 0
-    And the second value is 0
-    When I add the two values
-    Then the result should be 0
-
-  Scenario: Add two floating point numbers
-    Given the first value is 1.5
-    And the second value is 2.5
-    When I add the two values
-    Then the result should be 4.0
-
-  Scenario: Concatenate two strings
-    Given the first value is "foo"
-    And the second value is "bar"
-    When I add the two values
-    Then the result should be "foobar"
-
-  Scenario: Concatenate two lists
-    Given the first value is [1,2]
-    And the second value is [3,4]
-    When I add the two values
-    Then the result should be [1,2,3,4]
-
-  Scenario: Add None and an integer
-    Given the first value is None
-    And the second value is 1
-    When I add the two values
-    Then a TypeError should be raised
+Scenario: Health check success
+  When I send a GET request to "/health"
+  Then the response status code should be 200
+  And the response should contain JSON:
+    """
+    {
+      "status": "ok"
+    }
+    """
 ```
 
-Let me know if you'd like scenario outlines or table formatting!
+---
+
+**Feature: User listing**
+
+```gherkin
+Scenario: List all users
+  When I send a GET request to "/users"
+  Then the response status code should be 200
+  And the response should contain JSON:
+    """
+    [
+      {"id": 1, "name": "Alice"},
+      {"id": 2, "name": "Bob"}
+    ]
+    """
+```
+
+---
+
+**Feature: Retrieve user by ID**
+
+```gherkin
+Scenario: Get existing user by ID
+  Given a user with id 123 exists and is named "Sample User"
+  When I send a GET request to "/users/123"
+  Then the response status code should be 200
+  And the response should contain JSON:
+    """
+    {
+      "id": 123,
+      "name": "Sample User"
+    }
+    """
+```
+
+---
+
+**Feature: Create a new user**
+
+```gherkin
+Scenario: Create new user
+  Given I have the following user data:
+    | name  |
+    | Carol |
+  When I send a POST request to "/users" with JSON body:
+    """
+    {"name": "Carol"}
+    """
+  Then the response status code should be 201
+  And the response should contain JSON:
+    """
+    {
+      "message": "User created",
+      "user": {"name": "Carol"}
+    }
+    """
+```
+
+---
+
+Let me know if you need further breakdowns, more scenarios (like error cases), or want these in a different format!
