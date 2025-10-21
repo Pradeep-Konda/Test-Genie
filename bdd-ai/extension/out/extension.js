@@ -54,7 +54,7 @@ function activate(context) {
         }, async () => {
             try {
                 const result = await (0, api_1.generateBDD)(code);
-                panel_1.BDDPanel.show(result.feature || result);
+                panel_1.BDDPanel.show(result.feature_text || JSON.stringify(result));
             }
             catch (err) {
                 vscode.window.showErrorMessage(`Error: ${err.message}`);

@@ -12,7 +12,8 @@ async function generateBDD(code) {
         // formData.append("source_code", code);
         const response = await axios_1.default.post(`${BASE_URL}/generate-bdd`, { source_code: code }, // ✅ send JSON
         { headers: { "Content-Type": "application/json" } });
-        return response.data.result;
+        console.log("response:", response.data);
+        return response.data;
     }
     catch (err) {
         console.error("Error generating BDD:", err);

@@ -18,4 +18,5 @@ class CodeAnalysisNode:
                 messages=[{"role": "user", "content": prompt}]
                 )
         data.analysis = resp.choices[0].message.content
+        #print(data.analysis)
         return data

@@ -24,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
         async () => {
           try {
             const result = await generateBDD(code);
-            BDDPanel.show(result.feature || result);
+            BDDPanel.show(result.feature_text || JSON.stringify(result));
           } catch (err: any) {
             vscode.window.showErrorMessage(`Error: ${err.message}`);
           }

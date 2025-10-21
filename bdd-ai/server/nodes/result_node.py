@@ -1,6 +1,7 @@
 class ResultNode:
     def __call__(self, data):
         return {
-            "feature_text": data.feature_file,
+            "analysis": data.analysis,
+            "feature_text": data.feature_text,
             "execution_output": data.execution_output
         }

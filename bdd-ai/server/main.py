@@ -31,13 +31,13 @@ graph = StateGraph(GraphState)
 graph.add_node("analysis_node", CodeAnalysisNode())
 graph.add_node("bdd_node", BDDGenerationNode())
 graph.add_node("execute_node", TestExecutionNode())
-graph.add_node("result_node", ResultNode())
+#graph.add_node("result_node", ResultNode())
 
 # Connect flow
 graph.add_edge("analysis_node", "bdd_node")
 graph.add_edge("bdd_node", "execute_node")
-graph.add_edge("execute_node", "result_node")
-graph.add_edge("result_node", END)
+graph.add_edge("execute_node", END)
+#graph.add_edge("result_node", END)
 
 # Set the entry point
 graph.set_entry_point("analysis_node")
@@ -52,6 +52,13 @@ def generate_bdd(code_input: CodeInput):
     try:
         initial_state = {"source_code": code_input.source_code}
         output = workflow.invoke(initial_state)
-        return output
+        # print("output type:", type(output))
+        # print("feature text:", output.get("feature_text"))
+
+        return {
+            "analysis": output.get("analysis"),
+            "feature_text": output.get("feature_text"),
+            "execution_output": output.get("execution_output"),
+        }
     except Exception as e:
         return {"error": str(e)}

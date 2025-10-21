@@ -13,7 +13,9 @@ export async function generateBDD(code: string) {
       { headers: { "Content-Type": "application/json" } }
     );
 
-    return response.data.result;
+    console.log("response:", response.data);
+
+    return response.data;
   } catch (err: any) {
     console.error("Error generating BDD:", err);
     throw new Error(err.message);
