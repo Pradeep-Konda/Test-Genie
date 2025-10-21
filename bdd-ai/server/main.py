@@ -7,7 +7,6 @@ from langgraph.graph import StateGraph, END
 from nodes.code_analysis import CodeAnalysisNode
 from nodes.bdd_generation import BDDGenerationNode
 from nodes.test_execution import TestExecutionNode
-from nodes.result_node import ResultNode
 
 app = FastAPI(title="BDD Test Agent (LangGraph Workflow)")
 
@@ -31,13 +30,11 @@ graph = StateGraph(GraphState)
 graph.add_node("analysis_node", CodeAnalysisNode())
 graph.add_node("bdd_node", BDDGenerationNode())
 graph.add_node("execute_node", TestExecutionNode())
-#graph.add_node("result_node", ResultNode())
 
 # Connect flow
 graph.add_edge("analysis_node", "bdd_node")
 graph.add_edge("bdd_node", "execute_node")
 graph.add_edge("execute_node", END)
-#graph.add_edge("result_node", END)
 
 # Set the entry point
 graph.set_entry_point("analysis_node")
