@@ -33,7 +33,7 @@ class BDDGenerationNode:
             if not feature.strip():
                 continue
             file_content = "Feature:" + feature.strip()
-            file_path = f"behave_tests/features/generated_{i+1}.feature"
+            file_path = f"behave_tests/features/generated_{i}.feature"
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(file_content)
             written_files.append(file_path)

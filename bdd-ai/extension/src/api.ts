@@ -13,7 +13,7 @@ export async function generateBDD(code: string) {
       { headers: { "Content-Type": "application/json" } }
     );
 
-    console.log("response:", response.data);
+    //console.log("response:", response.data);
 
     return response.data;
   } catch (err: any) {
