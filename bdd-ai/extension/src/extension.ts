@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { generateBDD } from "./api";
+import { BDDResult, generateBDD } from "./api";
 import { BDDPanel } from "./panel";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -23,7 +23,7 @@ export function activate(context: vscode.ExtensionContext) {
         },
         async () => {
           try {
-            const result = await generateBDD(code);
+            const result: BDDResult = await generateBDD(code);
             BDDPanel.show(result.feature_text || JSON.stringify(result));
           } catch (err: any) {
             vscode.window.showErrorMessage(`Error: ${err.message}`);
