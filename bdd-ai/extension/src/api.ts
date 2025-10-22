@@ -1,23 +1,45 @@
-import axios from "axios";
+import { spawn } from "child_process";
+import * as path from "path";
 
-const BASE_URL = "http://127.0.0.1:8001";
+export interface BDDResult {
+  analysis: string;
+  feature_text: string;
+  execution_output: string;
+}
 
-export async function generateBDD(code: string) {
-  try {
-    // const formData = new FormData();
-    // formData.append("source_code", code);
+export async function generateBDD(code: string): Promise<BDDResult> {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(__dirname, "../../src/main.py");
 
-    const response = await axios.post(
-      `${BASE_URL}/generate-bdd`,
-      { source_code: code }, // ✅ send JSON
-      { headers: { "Content-Type": "application/json" } }
-    );
+    // Use the Python executable from your virtual environment
+    const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
 
-    //console.log("response:", response.data);
+    const python = spawn(pythonPath, [scriptPath, code], {
+      cwd: path.join(__dirname, "../../src"), // optional: set working dir to src
+    });
 
-    return response.data;
-  } catch (err: any) {
-    console.error("Error generating BDD:", err);
-    throw new Error(err.message);
-  }
+    let output = "";
+    let errorOutput = "";
+
+    python.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+
+    python.stderr.on("data", (data) => {
+      errorOutput += data.toString();
+    });
+
+    python.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(errorOutput || "Python script failed"));
+      } else {
+        try {
+          const parsed = JSON.parse(output);
+          resolve(parsed);
+        } catch (err) {
+          reject(new Error("Failed to parse Python output: " + output));
+        }
+      }
+    });
+  });
 }

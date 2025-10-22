@@ -1,22 +1,70 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateBDD = generateBDD;
-const axios_1 = __importDefault(require("axios"));
-const BASE_URL = "http://127.0.0.1:8001";
+const child_process_1 = require("child_process");
+const path = __importStar(require("path"));
 async function generateBDD(code) {
-    try {
-        // const formData = new FormData();
-        // formData.append("source_code", code);
-        const response = await axios_1.default.post(`${BASE_URL}/generate-bdd`, { source_code: code }, // ✅ send JSON
-        { headers: { "Content-Type": "application/json" } });
-        console.log("response:", response.data);
-        return response.data;
-    }
-    catch (err) {
-        console.error("Error generating BDD:", err);
-        throw new Error(err.message);
-    }
+    return new Promise((resolve, reject) => {
+        const scriptPath = path.join(__dirname, "../../src/main.py");
+        // Use the Python executable from your virtual environment
+        const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
+        const python = (0, child_process_1.spawn)(pythonPath, [scriptPath, code], {
+            cwd: path.join(__dirname, "../../src"), // optional: set working dir to src
+        });
+        let output = "";
+        let errorOutput = "";
+        python.stdout.on("data", (data) => {
+            output += data.toString();
+        });
+        python.stderr.on("data", (data) => {
+            errorOutput += data.toString();
+        });
+        python.on("close", (code) => {
+            if (code !== 0) {
+                reject(new Error(errorOutput || "Python script failed"));
+            }
+            else {
+                try {
+                    const parsed = JSON.parse(output);
+                    resolve(parsed);
+                }
+                catch (err) {
+                    reject(new Error("Failed to parse Python output: " + output));
+                }
+            }
+        });
+    });
 }
