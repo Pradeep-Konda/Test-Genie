@@ -1,9 +1,8 @@
-Feature:Get user details by ID
-
-  Scenario: Get user details by ID
-    Given a user exists with id 42
-    When I send a GET request to "/users/42"
-    Then the response status code should be 200
-    And the response JSON should be:
-      | id | name        |
-      | 42 | Sample User |
+Feature:Create a New User
+  Scenario: Creating a new user with valid data
+    When I send a POST request to "/users" with request body:
+      | name      |
+      | John Doe  |
+    Then the response status should be 201
+    And the response should contain "message" equal to "User created"
+    And the response should contain a "user" object with "name" equal to "John Doe"

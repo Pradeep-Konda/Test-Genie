@@ -1,10 +1,8 @@
 import * as vscode from "vscode";
-import { BDDResult, generateBDD } from "./api";
+import { generateTests, executeTests } from "./api";
 import { BDDPanel } from "./panel";
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log("✅ AI BDD Test Generator activated.");
-
   const disposable = vscode.commands.registerCommand(
     "extension.generateBDD",
     async () => {
@@ -16,15 +14,23 @@ export function activate(context: vscode.ExtensionContext) {
 
       const code = editor.document.getText();
       vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: "Generating BDD Tests...",
-          cancellable: false,
-        },
+        { location: vscode.ProgressLocation.Notification, title: "Generating Tests..." },
         async () => {
           try {
-            const result: BDDResult = await generateBDD(code);
-            BDDPanel.show(result.feature_text || JSON.stringify(result));
+            console.log("Generating BDD tests...", code);
+            const result = await generateTests(code);
+            const panel = BDDPanel.show(result.feature_text || "No tests generated");
+
+            panel.onDidClickRun(async (modifiedFeatureText: string) => {
+              vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: "Running Tests..." },
+                async () => {
+                  const execResult = await executeTests(modifiedFeatureText);
+                  vscode.window.showInformationMessage("✅ Test Execution Complete!");
+                  panel.showOutput(execResult.execution_output || "No output");
+                }
+              );
+            });
           } catch (err: any) {
             vscode.window.showErrorMessage(`Error: ${err.message}`);
           }
@@ -35,5 +41,3 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(disposable);
 }
-
-export function deactivate() {}

@@ -36,38 +36,47 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BDDPanel = void 0;
 const vscode = __importStar(require("vscode"));
 class BDDPanel {
-    constructor(panel) {
-        this._panel = panel;
-    }
-    static show(content) {
-        const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
+    static show(featureText) {
         if (BDDPanel.currentPanel) {
-            BDDPanel.currentPanel._panel.reveal(column);
-            BDDPanel.currentPanel._panel.webview.html = BDDPanel.getHtml(content);
-            return;
+            BDDPanel.currentPanel.panel.reveal();
+            return BDDPanel.currentPanel;
         }
-        const panel = vscode.window.createWebviewPanel("bddView", "BDD Test Results", column, { enableScripts: true });
+        const panel = vscode.window.createWebviewPanel("bddPreview", "AI-Generated BDD Tests", vscode.ViewColumn.One, { enableScripts: true });
+        panel.webview.html = BDDPanel.getHtml(featureText);
         BDDPanel.currentPanel = new BDDPanel(panel);
-        panel.webview.html = BDDPanel.getHtml(content);
-        panel.onDidDispose(() => {
-            BDDPanel.currentPanel = undefined;
+        return BDDPanel.currentPanel;
+    }
+    constructor(panel) {
+        this.panel = panel;
+    }
+    static getHtml(featureText) {
+        return `
+      <html>
+      <body>
+        <h2>Generated Test Cases</h2>
+        <textarea id="featureText" style="width:100%; height:60vh;">${featureText}</textarea>
+        <br/>
+        <button id="runTests">Run Tests</button>
+        <pre id="output"></pre>
+        <script>
+          const vscode = acquireVsCodeApi();
+          document.getElementById('runTests').addEventListener('click', () => {
+            const text = document.getElementById('featureText').value;
+            vscode.postMessage({ type: 'run', featureText: text });
+          });
+        </script>
+      </body>
+      </html>
+    `;
+    }
+    onDidClickRun(callback) {
+        this.panel.webview.onDidReceiveMessage((message) => {
+            if (message.type === "run")
+                callback(message.featureText);
         });
     }
-    static getHtml(content) {
-        return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <style>
-        body { font-family: Arial, sans-serif; padding: 1rem; background: #121212; color: #eee; }
-        pre { background: #1e1e1e; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-      </style>
-    </head>
-    <body>
-      <h2>Generated BDD Feature</h2>
-      <pre>${content}</pre>
-    </body>
-    </html>`;
+    showOutput(output) {
+        this.panel.webview.postMessage({ type: "output", output });
     }
 }
 exports.BDDPanel = BDDPanel;

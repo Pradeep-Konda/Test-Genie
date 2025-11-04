@@ -34,12 +34,10 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
-exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const api_1 = require("./api");
 const panel_1 = require("./panel");
 function activate(context) {
-    console.log("✅ AI BDD Test Generator activated.");
     const disposable = vscode.commands.registerCommand("extension.generateBDD", async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -47,14 +45,18 @@ function activate(context) {
             return;
         }
         const code = editor.document.getText();
-        vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Generating BDD Tests...",
-            cancellable: false,
-        }, async () => {
+        vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Generating Tests..." }, async () => {
             try {
-                const result = await (0, api_1.generateBDD)(code);
-                panel_1.BDDPanel.show(result.feature_text || JSON.stringify(result));
+                console.log("Generating BDD tests...", code);
+                const result = await (0, api_1.generateTests)(code);
+                const panel = panel_1.BDDPanel.show(result.feature_text || "No tests generated");
+                panel.onDidClickRun(async (modifiedFeatureText) => {
+                    vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Running Tests..." }, async () => {
+                        const execResult = await (0, api_1.executeTests)(modifiedFeatureText);
+                        vscode.window.showInformationMessage("✅ Test Execution Complete!");
+                        panel.showOutput(execResult.execution_output || "No output");
+                    });
+                });
             }
             catch (err) {
                 vscode.window.showErrorMessage(`Error: ${err.message}`);
@@ -63,4 +65,3 @@ function activate(context) {
     });
     context.subscriptions.push(disposable);
 }
-function deactivate() { }

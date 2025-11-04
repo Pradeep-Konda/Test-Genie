@@ -33,38 +33,39 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateBDD = generateBDD;
+exports.generateTests = generateTests;
+exports.executeTests = executeTests;
 const child_process_1 = require("child_process");
 const path = __importStar(require("path"));
-async function generateBDD(code) {
+function runPython(phase, input) {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, "../../src/main.py");
-        // Use the Python executable from your virtual environment
         const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
-        const python = (0, child_process_1.spawn)(pythonPath, [scriptPath, code], {
-            cwd: path.join(__dirname, "../../src"), // optional: set working dir to src
+        const python = (0, child_process_1.spawn)(pythonPath, [scriptPath, phase, input], {
+            cwd: path.join(__dirname, "../../src"),
         });
         let output = "";
         let errorOutput = "";
-        python.stdout.on("data", (data) => {
-            output += data.toString();
-        });
-        python.stderr.on("data", (data) => {
-            errorOutput += data.toString();
-        });
+        python.stdout.on("data", (data) => (output += data.toString()));
+        python.stderr.on("data", (data) => (errorOutput += data.toString()));
         python.on("close", (code) => {
             if (code !== 0) {
                 reject(new Error(errorOutput || "Python script failed"));
             }
             else {
                 try {
-                    const parsed = JSON.parse(output);
-                    resolve(parsed);
+                    resolve(JSON.parse(output));
                 }
-                catch (err) {
+                catch {
                     reject(new Error("Failed to parse Python output: " + output));
                 }
             }
         });
     });
+}
+async function generateTests(code) {
+    return runPython("generate", code);
+}
+async function executeTests(featureText) {
+    return runPython("execute", featureText);
 }
