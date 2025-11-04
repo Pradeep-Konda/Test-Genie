@@ -3,28 +3,22 @@ from nodes.bdd_generation import BDDGenerationNode
 from nodes.test_execution import TestExecutionNode
 from pydantic import BaseModel
 from typing import Optional
-import json, sys
+import json, sys, os
 
 class GraphState(BaseModel):
-    source_code: str
+    project_path: str
     analysis: Optional[str] = None
     feature_text: Optional[str] = None
     execution_output: Optional[str] = None
 
 
-def run_generation_phase(source_code: str):
-    # create proper model instead of dict
-    state = GraphState(source_code=source_code)
-
+def run_generation_phase(state: GraphState):
     analysis_node = CodeAnalysisNode()
     bdd_node = BDDGenerationNode()
-    execution_node = TestExecutionNode()
 
-    # Node-to-node pipeline (Generation phase)
+    # Agent handles reading files from project_path internally
     state = analysis_node(state)
     state = bdd_node(state)
-
-    # Do NOT execute yet — stop here for human review
     return state
 
 
@@ -35,27 +29,30 @@ def run_execution_phase(state: GraphState):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "No source code provided"}))
+    if len(sys.argv) < 3:
+        print(json.dumps({"error": "Usage: python main.py <phase> <project_path>"}))
         sys.exit(1)
 
-    source_code = sys.argv[2]
-    #print(source_code)
-    if not source_code:
-        print(json.dumps({"error": "Empty source code"}))
+    phase = sys.argv[1]
+    project_path = sys.argv[2]
+
+    if not os.path.exists(project_path):
+        print(json.dumps({"error": f"Directory not found: {project_path}"}))
         sys.exit(1)
-    # Step 1 — Run generation phase
-    gen_state = run_generation_phase(source_code)
 
-    # (Here you could persist gen_state.feature_text to disk for human review)
-    # print("===== HUMAN REVIEW REQUIRED =====")
-    # print(gen_state.feature_text)
+    state = GraphState(project_path=project_path)
 
-    # Step 2 — After human approval, run execution phase
-    final_state = run_execution_phase(gen_state)
-
-    print(json.dumps({
-        "analysis": final_state.analysis,
-        "feature_text": final_state.feature_text,
-        "execution_output": final_state.execution_output
-    }))
+    if phase == "generate":
+        gen_state = run_generation_phase(state)
+        print(json.dumps({
+            "analysis": gen_state.analysis,
+            "feature_text": gen_state.feature_text
+        }))
+    elif phase == "execute":
+        final_state = run_execution_phase(state)
+        print(json.dumps({
+            "execution_output": final_state.execution_output
+        }))
+    else:
+        print(json.dumps({"error": f"Unknown phase: {phase}"}))
+        sys.exit(1)

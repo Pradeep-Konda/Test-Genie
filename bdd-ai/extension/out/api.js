@@ -41,7 +41,8 @@ function runPython(phase, input) {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, "../../src/main.py");
         const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
-        const python = (0, child_process_1.spawn)(pythonPath, [scriptPath, phase, input], {
+        const pythonArgs = [scriptPath, phase, input, "--dir"];
+        const python = (0, child_process_1.spawn)(pythonPath, pythonArgs, {
             cwd: path.join(__dirname, "../../src"),
         });
         let output = "";
@@ -63,8 +64,8 @@ function runPython(phase, input) {
         });
     });
 }
-async function generateTests(code) {
-    return runPython("generate", code);
+async function generateTests(workspacePath) {
+    return runPython("generate", workspacePath);
 }
 async function executeTests(featureText) {
     return runPython("execute", featureText);

@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
-  title: API
-  version: 1.0.0
+  title: Demo Flask Service API
+  version: "1.0.0"
 servers:
   - url: /
 paths:
@@ -10,7 +10,7 @@ paths:
       summary: Check if the service is healthy.
       responses:
         '200':
-          description: Successful health check
+          description: Service is healthy
           content:
             application/json:
               example:
@@ -37,7 +37,7 @@ paths:
             schema:
               type: object
             example:
-              name: John Doe
+              name: Charlie
       responses:
         '201':
           description: User created
@@ -46,7 +46,7 @@ paths:
               example:
                 message: User created
                 user:
-                  name: John Doe
+                  name: Charlie
   /users/{user_id}:
     get:
       summary: Get details of a user by ID.

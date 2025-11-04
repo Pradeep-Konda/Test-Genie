@@ -12,7 +12,9 @@ function runPython(phase: string, input: string): Promise<BDDResult> {
     const scriptPath = path.join(__dirname, "../../src/main.py");
     const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
 
-    const python = spawn(pythonPath, [scriptPath, phase, input], {
+    const pythonArgs = [scriptPath, phase, input, "--dir"];
+
+    const python = spawn(pythonPath, pythonArgs, {
       cwd: path.join(__dirname, "../../src"),
     });
 
@@ -36,8 +38,8 @@ function runPython(phase: string, input: string): Promise<BDDResult> {
   });
 }
 
-export async function generateTests(code: string) {
-  return runPython("generate", code);
+export async function generateTests(workspacePath: string) {
+  return runPython("generate", workspacePath);
 }
 
 export async function executeTests(featureText: string) {
