@@ -1,32 +1,47 @@
 import * as vscode from "vscode";
-import { BDDResult, generateBDD } from "./api";
+import { generateTests, executeTests } from "./api";
 import { BDDPanel } from "./panel";
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log("✅ AI BDD Test Generator activated.");
-
   const disposable = vscode.commands.registerCommand(
     "extension.generateBDD",
     async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showErrorMessage("No code file open!");
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        vscode.window.showErrorMessage("❌ No workspace folder open!");
         return;
       }
 
-      const code = editor.document.getText();
+      const workspacePath = workspaceFolders[0].uri.fsPath; // Full directory path
+
       vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "Generating BDD Tests...",
-          cancellable: false,
+          title: "🔍 Generating BDD Tests (Analyzing entire workspace)...",
         },
         async () => {
           try {
-            const result: BDDResult = await generateBDD(code);
-            BDDPanel.show(result.feature_text || JSON.stringify(result));
+            console.log("📂 Sending workspace path for analysis:", workspacePath);
+
+            const result = await generateTests(workspacePath); // always directory mode
+            const panel = BDDPanel.show(result.feature_text || "No tests generated");
+
+            panel.onDidClickRun(async (modifiedFeatureText: string) => {
+              vscode.window.withProgress(
+                {
+                  location: vscode.ProgressLocation.Notification,
+                  title: "🏃 Running Tests...",
+                },
+                async () => {
+                  const execResult = await executeTests(modifiedFeatureText);
+                  vscode.window.showInformationMessage("✅ Test Execution Complete!");
+                  panel.showOutput(execResult.execution_output || "No output");
+                }
+              );
+            });
           } catch (err: any) {
-            vscode.window.showErrorMessage(`Error: ${err.message}`);
+            vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
           }
         }
       );
@@ -35,5 +50,3 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(disposable);
 }
-
-export function deactivate() {}
