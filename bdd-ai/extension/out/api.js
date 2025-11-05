@@ -37,11 +37,11 @@ exports.generateTests = generateTests;
 exports.executeTests = executeTests;
 const child_process_1 = require("child_process");
 const path = __importStar(require("path"));
-function runPython(phase, input) {
+function runPython(phase, inputPath) {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, "../../src/main.py");
         const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
-        const pythonArgs = [scriptPath, phase, input, "--dir"];
+        const pythonArgs = [scriptPath, phase, inputPath];
         const python = (0, child_process_1.spawn)(pythonPath, pythonArgs, {
             cwd: path.join(__dirname, "../../src"),
         });
@@ -67,6 +67,6 @@ function runPython(phase, input) {
 async function generateTests(workspacePath) {
     return runPython("generate", workspacePath);
 }
-async function executeTests(featureText) {
-    return runPython("execute", featureText);
+async function executeTests(workspacePath) {
+    return runPython("execute", workspacePath);
 }

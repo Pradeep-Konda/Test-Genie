@@ -1,0 +1,32 @@
+<html><head><title>API Test Report</title>
+<style>body{font-family:Arial;margin:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background:#f2f2f2;}.pass{color:green;font-weight:bold;}.fail{color:red;font-weight:bold;}</style>
+</head><body>
+<h1>API Test Execution Report</h1><p>Generated: 20251105_232314</p>
+<table><tr><th>Scenario</th><th>Status</th><th>Response Code</th><th>cURL Command</th></tr>
+<tr><td>Create order with missing quantity (Negative/Error)</td><td class='fail'>fail</td><td>fail</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2}</code></td></tr>
+<tr><td>Create order with zero quantity (Edge Case)</td><td class='fail'>fail</td><td>fail</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 0}</code></td></tr>
+<tr><td>Create order with negative quantity (Edge Case)</td><td class='fail'>fail</td><td>fail</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": -5}</code></td></tr>
+<tr><td>Create order with non-existent user_id (Negative/Error)</td><td class='fail'>fail</td><td>fail</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 9999, "product_id": 2, "quantity": 1}</code></td></tr>
+<tr><td>Create order - injection attack in user_id (Security)</td><td class='error'>error</td><td>error</td><td><code>None</code></td></tr>
+</table><h2>Executed cURL Commands</h2><ul>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 0}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": -5}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 9999, "product_id": 2, "quantity": 1}</code></li>
+</ul></body></html>

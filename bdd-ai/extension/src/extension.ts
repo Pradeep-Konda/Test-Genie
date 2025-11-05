@@ -24,17 +24,18 @@ export function activate(context: vscode.ExtensionContext) {
           try {
             console.log("📂 Sending workspace path for analysis:", workspacePath);
 
-            const result = await generateTests(workspacePath); // always directory mode
+            const result = await generateTests(workspacePath);
             const panel = BDDPanel.show(result.feature_text || "No tests generated");
 
-            panel.onDidClickRun(async (modifiedFeatureText: string) => {
+            // ✅ Run tests from same workspace directory
+            panel.onDidClickRun(async () => {
               vscode.window.withProgress(
                 {
                   location: vscode.ProgressLocation.Notification,
                   title: "🏃 Running Tests...",
                 },
                 async () => {
-                  const execResult = await executeTests(modifiedFeatureText);
+                  const execResult = await executeTests(workspacePath);
                   vscode.window.showInformationMessage("✅ Test Execution Complete!");
                   panel.showOutput(execResult.execution_output || "No output");
                 }

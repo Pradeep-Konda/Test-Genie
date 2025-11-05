@@ -7,12 +7,12 @@ export interface BDDResult {
   execution_output?: string;
 }
 
-function runPython(phase: string, input: string): Promise<BDDResult> {
+function runPython(phase: string, inputPath: string): Promise<BDDResult> {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(__dirname, "../../src/main.py");
     const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
 
-    const pythonArgs = [scriptPath, phase, input, "--dir"];
+    const pythonArgs = [scriptPath, phase, inputPath];
 
     const python = spawn(pythonPath, pythonArgs, {
       cwd: path.join(__dirname, "../../src"),
@@ -42,6 +42,6 @@ export async function generateTests(workspacePath: string) {
   return runPython("generate", workspacePath);
 }
 
-export async function executeTests(featureText: string) {
-  return runPython("execute", featureText);
+export async function executeTests(workspacePath: string) {
+  return runPython("execute", workspacePath);
 }

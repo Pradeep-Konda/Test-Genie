@@ -1,0 +1,37 @@
+<html><head><title>API Test Report</title>
+<style>body{font-family:Arial;margin:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background:#f2f2f2;}.pass{color:green;font-weight:bold;}.fail{color:red;font-weight:bold;}</style>
+</head><body>
+<h1>API Test Execution Report</h1><p>Generated: 20251105_232326</p>
+<table><tr><th>Scenario</th><th>Status</th><th>Response Code</th><th>cURL Command</th></tr>
+<tr><td>Create order - excessive requests (Performance)</td><td class='not executed (single request tested, batch not supported in this run)'>not executed (single request tested, batch not supported in this run)</td><td>not executed (single request tested, batch not supported in this run)</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 1}</code></td></tr>
+<tr><td>Get order by ID (Happy Path)</td><td class='failed (no response)'>failed (no response)</td><td>failed (no response)</td><td><code>curl -s -X GET /api/orders/1 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get order by non-existent ID (Negative/Error)</td><td class='failed (no response)'>failed (no response)</td><td>failed (no response)</td><td><code>curl -s -X GET /api/orders/9999 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get order by ID with invalid ID type (Negative/Error)</td><td class='failed (no response)'>failed (no response)</td><td>failed (no response)</td><td><code>curl -s -X GET /api/orders/abc -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get order by ID - path traversal attack (Security)</td><td class='failed (no response)'>failed (no response)</td><td>failed (no response)</td><td><code>curl -s -X GET /api/orders/../../etc/passwd -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+</table><h2>Executed cURL Commands</h2><ul>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 1}</code></li>
+<li><code>curl -s -X GET /api/orders/1 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/9999 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/abc -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/../../etc/passwd -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+</ul></body></html>

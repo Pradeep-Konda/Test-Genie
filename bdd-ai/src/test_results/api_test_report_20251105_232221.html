@@ -1,0 +1,20 @@
+<html><head><title>API Test Report</title>
+<style>body{font-family:Arial;margin:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background:#f2f2f2;}.pass{color:green;font-weight:bold;}.fail{color:red;font-weight:bold;}</style>
+</head><body>
+<h1>API Test Execution Report</h1><p>Generated: 20251105_232221</p>
+<table><tr><th>Scenario</th><th>Status</th><th>Response Code</th><th>cURL Command</th></tr>
+<tr><td>List all products (Happy Path)</td><td class='failed'>failed</td><td>failed</td><td><code>curl -s -X GET /api/products/ -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>List products - SQL injection attempt (Security)</td><td class='failed'>failed</td><td>failed</td><td><code>None</code></td></tr>
+<tr><td>Add a new product (Happy Path)</td><td class='failed'>failed</td><td>failed</td><td><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Tablet", "price": 299.99}</code></td></tr>
+</table><h2>Executed cURL Commands</h2><ul>
+<li><code>curl -s -X GET /api/products/ -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Tablet", "price": 299.99}</code></li>
+</ul></body></html>
