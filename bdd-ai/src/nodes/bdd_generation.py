@@ -6,8 +6,6 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import Tool
 from langchain_core.messages import SystemMessage, HumanMessage
 
-load_dotenv()
-
 
 class BDDGenerationNode:
     """
@@ -17,8 +15,7 @@ class BDDGenerationNode:
     """
 
     def __init__(self, output_dir: str = "behave_tests/features"):
-        os.makedirs(output_dir, exist_ok=True)
-        self.output_dir = output_dir
+        load_dotenv()
 
         # ✅ Use deterministic but strong model
         self.llm = ChatOpenAI(model="gpt-4.1", temperature=0)
@@ -75,8 +72,11 @@ class BDDGenerationNode:
     Then I should receive a 400 Bad Request response
 """
 
-    def save_feature_files(self, feature_text: str) -> list:
+    def save_feature_files(self, project_path: str, feature_text: str) -> list:
         """Splits and saves multiple Feature blocks to files."""
+        output_dir = os.path.join(project_path, "bdd_tests")
+        os.makedirs(output_dir, exist_ok=True)
+
         features = feature_text.split("Feature:")
         written_files = []
         for i, feature in enumerate(features):
@@ -84,7 +84,7 @@ class BDDGenerationNode:
             if not feature:
                 continue
             file_content = "Feature: " + feature
-            file_path = os.path.join(self.output_dir, f"generated_{i}.feature")
+            file_path = os.path.join(output_dir, f"generated_{i}.feature")
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(file_content)
             written_files.append(file_path)
@@ -127,7 +127,7 @@ class BDDGenerationNode:
             print(f"⚠️ LLM Error in BDDGenerationNode: {e}")
             feature_text = self._mock_bdd_generator(openapi_spec)
 
-        written_files = self.save_feature_files(feature_text)
+        written_files = self.save_feature_files(state.project_path, feature_text)
 
         state.feature_text = feature_text
         #state.feature_files = written_files

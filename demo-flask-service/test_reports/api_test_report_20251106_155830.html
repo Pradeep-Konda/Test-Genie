@@ -1,0 +1,301 @@
+<html><head><title>API Test Report</title>
+<style>body{font-family:Arial;margin:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background:#f2f2f2;}.pass{color:green;font-weight:bold;}.fail{color:red;font-weight:bold;}</style>
+</head><body>
+<h1>API Test Execution Report</h1><p>Generated: 20251106_155830</p>
+<table><tr><th>Scenario</th><th>Status</th><th>Response Code</th><th>cURL Command</th></tr>
+<tr><td>Health check returns service is healthy (Happy Path)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/health -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Health check with unexpected HTTP method (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/health -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Health check endpoint - injection attack attempt (Security)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/health?status=ok';DROP TABLE users;-- -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>List all users (Happy Path)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/users/ -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>List users - SQL injection attempt (Security)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/users/?sort=name;DROP TABLE users; -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Create a new user (Happy Path)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name":"Charlie","email":"charlie@example.com"}</code></td></tr>
+<tr><td>Create user with missing email (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Charlie"}</code></td></tr>
+<tr><td>Create user with invalid email format (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Charlie", "email": "not-an-email"}</code></td></tr>
+<tr><td>Create user with empty name (Edge Case)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "", "email": "charlie@example.com"}</code></td></tr>
+<tr><td>Create user with duplicate email (Edge Case)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Alice", "email": "alice@example.com"}</code></td></tr>
+<tr><td>Create user - XSS attack in name (Security)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "<script>bad()</script>", "email": "xss@example.com"}</code></td></tr>
+<tr><td>Create user - unauthorized access (Security)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name":"Alice","email":"alice@example.com","password":"Password123!"}</code></td></tr>
+<tr><td>Get user by ID (Happy Path)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/users/1 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get user by non-existent ID (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/users/9999 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get user by ID with invalid ID type (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/users/abc -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get user by ID - ID at lower boundary (Edge Case)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/users/0 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get user by ID - SQL injection attempt (Security)</td><td class='inconclusive'>inconclusive</td><td>0</td><td><code>curl -s -X GET /api/users/1;DROP TABLE users; -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get user by ID - unauthorized access (Security)</td><td class='inconclusive'>inconclusive</td><td>0</td><td><code>curl -s -X GET /api/users/1 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>List all products (Happy Path)</td><td class='inconclusive'>inconclusive</td><td>0</td><td><code>curl -s -X GET /api/products/ -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>List products - SQL injection attempt (Security)</td><td class='inconclusive'>inconclusive</td><td>0</td><td><code>curl -s -X GET /api/products/?sort=name;DROP TABLE products; -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Add a new product (Happy Path)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Tablet", "price": 299.99}</code></td></tr>
+<tr><td>Add product with missing price (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Tablet"}</code></td></tr>
+<tr><td>Add product with negative price (Edge Case)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Tablet", "price": -10.00}</code></td></tr>
+<tr><td>Add product with empty name (Edge Case)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "", "price": 299.99}</code></td></tr>
+<tr><td>Add product - XSS attack in name (Security)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "<script>bad()</script>", "price": 299.99}</code></td></tr>
+<tr><td>Add product - unauthorized access (Security)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Laptop", "price": 999.99}</code></td></tr>
+<tr><td>Get product by ID (Happy Path)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/products/1 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get product by non-existent ID (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/products/9999 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get product by ID with invalid ID type (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/products/abc -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get product by ID - ID at lower boundary (Edge Case)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X GET /api/products/0 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get product by ID - SQL injection attempt (Security)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X GET /api/products/1;DROP TABLE products; -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get product by ID - unauthorized access (Security)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X GET /api/products/1 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>List all orders (Happy Path)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X GET /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>List orders with no orders present (Edge Case)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X GET /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>List orders - SQL injection attempt (Security)</td><td class='inconclusive'>inconclusive</td><td>0</td><td><code>curl -s -X GET /api/orders/?sort=id;DROP TABLE orders; -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Create a new order (Happy Path)</td><td class='inconclusive'>inconclusive</td><td>0</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 3}</code></td></tr>
+<tr><td>Create order with missing quantity (Negative/Error)</td><td class='inconclusive'>inconclusive</td><td>0</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2}</code></td></tr>
+<tr><td>Create order with zero quantity (Edge Case)</td><td class='inconclusive'>inconclusive</td><td>0</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 0}</code></td></tr>
+<tr><td>Create order with negative quantity (Edge Case)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": -1}</code></td></tr>
+<tr><td>Create order with non-existent user_id (Negative/Error)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 9999, "product_id": 2, "quantity": 1}</code></td></tr>
+<tr><td>Create order with non-existent product_id (Negative/Error)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 9999, "quantity": 1}</code></td></tr>
+<tr><td>Create order - SQL injection in user_id (Security)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": "1;DROP TABLE users;--", "product_id": 2, "quantity": 1}</code></td></tr>
+<tr><td>Create order - unauthorized access (Security)</td><td class='fail'>fail</td><td>0</td><td><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 1}</code></td></tr>
+<tr><td>Get order by ID (Happy Path)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/orders/1 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get order by non-existent ID (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/orders/9999 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get order by ID with invalid ID type (Negative/Error)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/orders/abc -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get order by ID - ID at lower boundary (Edge Case)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/orders/0 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get order by ID - SQL injection attempt (Security)</td><td class='error'>error</td><td>0</td><td><code>curl -s -X GET /api/orders/1;DROP TABLE orders; -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+<tr><td>Get order by ID - unauthorized access (Security)</td><td class='failed'>failed</td><td>0</td><td><code>curl -s -X GET /api/orders/1 -w 
+HTTP_STATUS:%{http_code}
+</code></td></tr>
+</table><h2>Executed cURL Commands</h2><ul>
+<li><code>curl -s -X GET /api/health -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X POST /api/health -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/health?status=ok';DROP TABLE users;-- -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/users/ -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/users/?sort=name;DROP TABLE users; -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name":"Charlie","email":"charlie@example.com"}</code></li>
+<li><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Charlie"}</code></li>
+<li><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Charlie", "email": "not-an-email"}</code></li>
+<li><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "", "email": "charlie@example.com"}</code></li>
+<li><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Alice", "email": "alice@example.com"}</code></li>
+<li><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "<script>bad()</script>", "email": "xss@example.com"}</code></li>
+<li><code>curl -s -X POST /api/users/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name":"Alice","email":"alice@example.com","password":"Password123!"}</code></li>
+<li><code>curl -s -X GET /api/users/1 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/users/9999 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/users/abc -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/users/0 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/users/1;DROP TABLE users; -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/users/1 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/products/ -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/products/?sort=name;DROP TABLE products; -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Tablet", "price": 299.99}</code></li>
+<li><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Tablet"}</code></li>
+<li><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Tablet", "price": -10.00}</code></li>
+<li><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "", "price": 299.99}</code></li>
+<li><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "<script>bad()</script>", "price": 299.99}</code></li>
+<li><code>curl -s -X POST /api/products/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"name": "Laptop", "price": 999.99}</code></li>
+<li><code>curl -s -X GET /api/products/1 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/products/9999 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/products/abc -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/products/0 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/products/1;DROP TABLE products; -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/products/1 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/?sort=id;DROP TABLE orders; -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 3}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 0}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": -1}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 9999, "product_id": 2, "quantity": 1}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 9999, "quantity": 1}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": "1;DROP TABLE users;--", "product_id": 2, "quantity": 1}</code></li>
+<li><code>curl -s -X POST /api/orders/ -w 
+HTTP_STATUS:%{http_code}
+ -H Content-Type: application/json -d {"user_id": 1, "product_id": 2, "quantity": 1}</code></li>
+<li><code>curl -s -X GET /api/orders/1 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/9999 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/abc -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/0 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/1;DROP TABLE orders; -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+<li><code>curl -s -X GET /api/orders/1 -w 
+HTTP_STATUS:%{http_code}
+</code></li>
+</ul></body></html>

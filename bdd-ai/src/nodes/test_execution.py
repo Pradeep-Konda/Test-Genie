@@ -9,19 +9,18 @@ from langchain.agents import create_agent
 from langchain_core.tools import Tool
 from langchain_core.messages import SystemMessage, HumanMessage
 
-load_dotenv()
+
 
 
 class TestExecutionNode:
     """
     Executes Gherkin-based API test scenarios using a cURL-driven REST engine via an AI agent.
-    Automatically runs all scenarios in batches and lets the agent call GenerateHTMLReport internally.
+    Runs all scenarios in batches but generates ONE combined HTML report at the end.
     """
 
-    def __init__(self, features_dir: str = "behave_tests/features", output_dir: str = "test_results"):
+    def __init__(self, features_dir: str = "bdd_tests"):
+        load_dotenv()
         self.features_dir = features_dir
-        os.makedirs(output_dir, exist_ok=True)
-        self.output_dir = output_dir
 
         # Initialize LLM
         self.llm = ChatOpenAI(model="gpt-4.1", temperature=0)
@@ -56,10 +55,8 @@ class TestExecutionNode:
             "Use 'Then' steps to verify response codes and body content.\n"
             "Store the result for each scenario including:\n"
             "  { scenario, steps, status, response_code, curl_command }\n"
-            "After finishing a batch, automatically call GenerateHTMLReport with all results and curl commands "
-            "to generate an HTML test report.\n"
-            "Never fabricate data or call fake endpoints.\n"
-            "Return a JSON response summarizing the generated HTML report path."
+            "Return structured JSON only: { 'results': [...], 'curl_commands': [...] }.\n"
+            "Never fabricate data or call fake endpoints."
         )
 
         # Create agent
@@ -107,14 +104,18 @@ class TestExecutionNode:
     # ------------------------------------------------------------------
     # Tool 2: HTML Report Generator
     # ------------------------------------------------------------------
-    def _generate_html_report(self, input_json: str):
+    def _generate_html_report(self, project_path: str, input_json: str):
         """Generates an HTML test execution report."""
+
+        output_dir = os.path.join(project_path, "test_reports")
+        os.makedirs(output_dir, exist_ok=True)
+
         try:
             data = json.loads(input_json)
             results = data.get("results", [])
             curl_commands = data.get("curl_commands", [])
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            html_path = os.path.join(self.output_dir, f"api_test_report_{timestamp}.html")
+            html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
             html = [
                 "<html><head><title>API Test Report</title>",
@@ -130,7 +131,7 @@ class TestExecutionNode:
                 scenario = r.get("scenario", "Unknown Scenario")
                 status = r.get("status", "UNKNOWN")
                 curl_cmd = r.get("curl_command", "N/A")
-                response_code = r.get("status", "N/A")
+                response_code = r.get("response_code", "N/A")
                 html.append(
                     f"<tr><td>{scenario}</td><td class='{status.lower()}'>{status}</td>"
                     f"<td>{response_code}</td><td><code>{curl_cmd}</code></td></tr>"
@@ -152,10 +153,11 @@ class TestExecutionNode:
     # ------------------------------------------------------------------
     # Helper: Extract all scenarios
     # ------------------------------------------------------------------
-    def _extract_scenarios(self):
+    def _extract_scenarios(self, project_path: str) -> list:
+        features_path = os.path.join(project_path, self.features_dir)
         files = [
-            os.path.join(self.features_dir, f)
-            for f in os.listdir(self.features_dir)
+            os.path.join(features_path, f)
+            for f in os.listdir(features_path)
             if f.endswith(".feature")
         ]
         all_text = ""
@@ -165,43 +167,82 @@ class TestExecutionNode:
         return [s.strip() for s in re.split(r"\bScenario:", all_text) if s.strip()]
 
     # ------------------------------------------------------------------
-    # Execute All Scenarios in Batches
+    # Execute All Scenarios in Batches → ONE combined report
     # ------------------------------------------------------------------
     def __call__(self, state, batch_size: int = 5):
         try:
-            scenarios = self._extract_scenarios()
+            scenarios = self._extract_scenarios(state.project_path)
             if not scenarios:
                 raise ValueError("No scenarios found in feature files")
 
-            print(f"🧩 Found {len(scenarios)} scenarios — running in batches of {batch_size}")
+            #print(f"🧩 Found {len(scenarios)} scenarios — running in batches of {batch_size}")
+
+            all_results = []
+            all_curls = []
 
             for i in range(0, len(scenarios), batch_size):
                 batch = scenarios[i:i + batch_size]
-                print(f"\n🚀 Executing batch {i//batch_size + 1}: {len(batch)} scenarios")
+                #print(f"\n🚀 Executing batch {i//batch_size + 1}: {len(batch)} scenarios")
 
                 batch_text = "\n\n".join(batch)
                 messages = [
                     SystemMessage(content=self.system_prompt),
-                    HumanMessage(content=f"Execute these API test scenarios and call GenerateHTMLReport when done:\n\n{batch_text}"),
+                    HumanMessage(content=(
+                        "Execute these API test scenarios using CurlExecutor.\n"
+                        "Return only valid JSON in this format:\n"
+                        "{ \"results\": [...], \"curl_commands\": [...] }\n\n"
+                        f"{batch_text}"
+                    )),
                 ]
 
                 result = self.agent.invoke({"messages": messages})
 
-                # Extract agent output
-                if isinstance(result, dict) and "messages" in result:
-                    ai_msgs = [m for m in result["messages"] if getattr(m, "type", None) == "ai"]
-                    output = ai_msgs[-1].content if ai_msgs else ""
-                elif hasattr(result, "content"):
-                    output = result.content
+                # Try to extract JSON directly from agent output (inline logic)
+                if hasattr(result, "content"):
+                    content = result.content
+                elif isinstance(result, dict) and "messages" in result:
+                    ai_msgs = [
+                        m for m in result["messages"]
+                        if getattr(m, "type", None) == "ai" or m.__class__.__name__ == "AIMessage"
+                    ]
+                    content = ai_msgs[-1].content if ai_msgs else str(result)
                 else:
-                    output = str(result)
+                    content = str(result)
 
-                print("✅ Batch execution complete.")
-                print(output[:1000])  # partial preview
+                content = content.strip()
 
-            print("\n🎉 All batches executed successfully!")
-            state.execution_output = "All test batches executed successfully. Check generated HTML reports."
+                # Try direct JSON parse first
+                parsed = None
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError:
+                    # Inline regex-based fallback (no function)
+                    match = re.search(r"\{(?:[^{}]|(?R))*\}", content, re.DOTALL)
+                    if match:
+                        try:
+                            parsed = json.loads(match.group(0))
+                        except Exception:
+                            parsed = None
+
+                if parsed:
+                    all_results.extend(parsed.get("results", []))
+                    all_curls.extend(parsed.get("curl_commands", []))
+                    #print(f"✅ Batch {i//batch_size + 1} parsed successfully ({len(parsed.get('results', []))} results).")
+                else:
+                    print(f"⚠️ Could not parse AI output as JSON for batch {i//batch_size + 1}. Skipping...")
+
+            # ✅ Generate one combined HTML report for all batches
+            #print("\n🧾 Generating final combined HTML report...")
+            report_input = json.dumps({"results": all_results, "curl_commands": all_curls})
+            report_json = self._generate_html_report(state.project_path, report_input)
+            report_path = json.loads(report_json).get("html_report")
+
+            #print(f"\n🎉 All batches executed successfully!")
+            #print(f"📄 Combined HTML report: {report_path}")
+
+            state.execution_output = f"All test batches executed successfully. Combined report at {report_path}."
         except Exception as e:
             print(f"⚠️ Test Execution Error: {e}")
             state.execution_output = {"error": str(e)}
         return state
+
