@@ -40,7 +40,8 @@ const path = __importStar(require("path"));
 function runPython(phase, input) {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, "../../src/main.py");
-        const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
+        // const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
+        const pythonPath = "C:\\Users\\Vikhil.N\\AppData\\Local\\Programs\\Python\\Python314\\python.exe";
         const pythonArgs = [scriptPath, phase, input, "--dir"];
         const python = (0, child_process_1.spawn)(pythonPath, pythonArgs, {
             cwd: path.join(__dirname, "../../src"),

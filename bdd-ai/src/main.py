@@ -2,7 +2,7 @@ from nodes.code_analysis import CodeAnalysisNode
 from nodes.bdd_generation import BDDGenerationNode
 from nodes.test_execution import TestExecutionNode
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict
 import json, sys, os
 
 class GraphState(BaseModel):
@@ -10,6 +10,8 @@ class GraphState(BaseModel):
     analysis: Optional[str] = None
     feature_text: Optional[str] = None
     execution_output: Optional[str] = None
+    report_message: Optional[str] = None
+
 
 
 def run_generation_phase(state: GraphState):

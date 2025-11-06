@@ -10,7 +10,9 @@ export interface BDDResult {
 function runPython(phase: string, input: string): Promise<BDDResult> {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(__dirname, "../../src/main.py");
-    const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
+    // const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
+    const pythonPath = "C:\\Users\\Vikhil.N\\AppData\\Local\\Programs\\Python\\Python314\\python.exe";
+
 
     const pythonArgs = [scriptPath, phase, input, "--dir"];
 
