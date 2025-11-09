@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 from langchain.agents import create_agent
@@ -73,21 +74,42 @@ class BDDGenerationNode:
 """
 
     def save_feature_files(self, project_path: str, feature_text: str) -> list:
-        """Splits and saves multiple Feature blocks to files."""
         output_dir = os.path.join(project_path, "bdd_tests")
         os.makedirs(output_dir, exist_ok=True)
 
+        # Clean up old files first
+        for file in os.listdir(output_dir):
+            if file.endswith(".feature"):
+                os.remove(os.path.join(output_dir, file))
+
+        # Split on 'Feature:' and rebuild each block properly
         features = feature_text.split("Feature:")
         written_files = []
-        for i, feature in enumerate(features):
+
+        for index, feature in enumerate(features):
             feature = feature.strip()
             if not feature:
                 continue
-            file_content = "Feature: " + feature
-            file_path = os.path.join(output_dir, f"generated_{i}.feature")
+
+            # Reconstruct full block
+            block = "Feature: " + feature
+
+            # Extract readable name from first line
+            match = re.match(r"Feature:\s*(.+)", block)
+            if match:
+                name = re.sub(r"\s+", "_", match.group(1).strip().lower())
+            else:
+                name = f"feature_{index}"
+
+            # Construct file path
+            file_path = os.path.join(output_dir, f"{name}.feature")
+
+            # Write to file
             with open(file_path, "w", encoding="utf-8") as f:
-                f.write(file_content)
+                f.write(block)
+
             written_files.append(file_path)
+
         return written_files
 
     def __call__(self, state):

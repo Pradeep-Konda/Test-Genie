@@ -44,22 +44,22 @@ function activate(context) {
             vscode.window.showErrorMessage("❌ No workspace folder open!");
             return;
         }
-        const workspacePath = workspaceFolders[0].uri.fsPath; // Full directory path
+        const workspacePath = workspaceFolders[0].uri.fsPath;
         vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: "🔍 Generating BDD Tests (Analyzing entire workspace)...",
+            title: "🔍 Generating BDD Tests...",
         }, async () => {
             try {
                 console.log("📂 Sending workspace path for analysis:", workspacePath);
                 const result = await (0, api_1.generateTests)(workspacePath);
                 const panel = panel_1.BDDPanel.show(result.feature_text || "No tests generated");
-                // ✅ Run tests from same workspace directory
                 panel.onDidClickRun(async () => {
+                    const updatedFeatureText = panel.getFeatureText();
                     vscode.window.withProgress({
                         location: vscode.ProgressLocation.Notification,
                         title: "🏃 Running Tests...",
                     }, async () => {
-                        const execResult = await (0, api_1.executeTests)(workspacePath);
+                        const execResult = await (0, api_1.executeTests)(workspacePath, updatedFeatureText);
                         vscode.window.showInformationMessage("✅ Test Execution Complete!");
                         panel.showOutput(execResult.execution_output || "No output");
                     });

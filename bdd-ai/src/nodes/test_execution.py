@@ -137,16 +137,11 @@ class TestExecutionNode:
                     f"<td>{response_code}</td><td><code>{curl_cmd}</code></td></tr>"
                 )
 
-            html.append("</table><h2>Executed cURL Commands</h2><ul>")
-            for cmd in curl_commands:
-                html.append(f"<li><code>{cmd}</code></li>")
-            html.append("</ul></body></html>")
-
             with open(html_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(html))
 
-            print(f"📄 HTML report generated at: {html_path}")
-            return json.dumps({"html_report": html_path})
+            #print(f"📄 HTML report generated at: {html_path}")
+            return json.dumps({"html_report": html})
         except Exception as e:
             return json.dumps({"error": str(e)})
 
@@ -235,12 +230,12 @@ class TestExecutionNode:
             #print("\n🧾 Generating final combined HTML report...")
             report_input = json.dumps({"results": all_results, "curl_commands": all_curls})
             report_json = self._generate_html_report(state.project_path, report_input)
-            report_path = json.loads(report_json).get("html_report")
+            report_html = json.loads(report_json).get("html_report")
 
             #print(f"\n🎉 All batches executed successfully!")
             #print(f"📄 Combined HTML report: {report_path}")
 
-            state.execution_output = f"All test batches executed successfully. Combined report at {report_path}."
+            state.execution_output = report_html
         except Exception as e:
             print(f"⚠️ Test Execution Error: {e}")
             state.execution_output = {"error": str(e)}

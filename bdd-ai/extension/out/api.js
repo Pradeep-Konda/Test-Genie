@@ -34,9 +34,14 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateTests = generateTests;
+exports.saveUpdatedFeatureFile = saveUpdatedFeatureFile;
 exports.executeTests = executeTests;
 const child_process_1 = require("child_process");
 const path = __importStar(require("path"));
+const fs = __importStar(require("fs"));
+/**
+ * Run the Python backend with specified phase ("generate" or "execute")
+ */
 function runPython(phase, inputPath) {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, "../../src/main.py");
@@ -64,9 +69,56 @@ function runPython(phase, inputPath) {
         });
     });
 }
+/**
+ * Generates BDD test cases by analyzing the codebase
+ */
 async function generateTests(workspacePath) {
     return runPython("generate", workspacePath);
 }
-async function executeTests(workspacePath) {
+/**
+ * Clears existing .feature files in outputDir
+ */
+function clearOutputDir(outputDir) {
+    if (!fs.existsSync(outputDir))
+        return;
+    const files = fs.readdirSync(outputDir);
+    for (const file of files) {
+        const filePath = path.join(outputDir, file);
+        if (fs.lstatSync(filePath).isFile() && file.endsWith(".feature")) {
+            fs.unlinkSync(filePath);
+        }
+    }
+}
+/**
+ * Saves updated feature text back into the workspace output folder
+ */
+function saveUpdatedFeatureFile(workspacePath, featureText) {
+    const outputDir = path.join(workspacePath, "bdd_tests");
+    if (!fs.existsSync(outputDir))
+        fs.mkdirSync(outputDir, { recursive: true });
+    // 🧹 Clear old feature files
+    clearOutputDir(outputDir);
+    // ✂️ Split by 'Feature:' while keeping the word
+    const featureBlocks = featureText
+        .split(/(?=Feature:)/g)
+        .map(f => f.trim())
+        .filter(f => f.length > 0);
+    featureBlocks.forEach((block, index) => {
+        // Derive a readable name
+        const match = block.match(/Feature:\s*(.+)/);
+        const name = match ? match[1].trim().replace(/\s+/g, "_").toLowerCase() : `feature_${index}`;
+        const filePath = path.join(outputDir, `${name}.feature`);
+        fs.writeFileSync(filePath, block, "utf-8");
+    });
+    return outputDir;
+}
+/**
+ * Executes BDD tests from workspace (after ensuring updated file is written)
+ */
+async function executeTests(workspacePath, updatedFeatureText) {
+    // 🧩 If user edited feature text in panel, persist before running tests
+    if (updatedFeatureText) {
+        saveUpdatedFeatureFile(workspacePath, updatedFeatureText);
+    }
     return runPython("execute", workspacePath);
 }
