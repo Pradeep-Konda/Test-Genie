@@ -1,11 +1,21 @@
 from nodes.code_analysis import CodeAnalysisNode
 from nodes.bdd_generation import BDDGenerationNode
 from nodes.test_execution import TestExecutionNode
+<<<<<<< HEAD:bdd-ai/src/main.py
 from pydantic import BaseModel
 from typing import Optional, Dict
 import json, sys, os
+=======
+from dataclasses import dataclass
+from typing import Optional
+import json
+import sys
+import os
+>>>>>>> 6018aab7cd9f7d62a918747a4d399806ca0e059d:bdd-ai/extension/agents/main.py
 
-class GraphState(BaseModel):
+
+@dataclass
+class GraphState:
     project_path: str
     analysis: Optional[str] = None
     feature_text: Optional[str] = None
@@ -14,7 +24,7 @@ class GraphState(BaseModel):
 
 
 
-def run_generation_phase(state: GraphState):
+def run_generation_phase(state: GraphState) -> GraphState:
     analysis_node = CodeAnalysisNode()
     bdd_node = BDDGenerationNode()
 
@@ -24,7 +34,7 @@ def run_generation_phase(state: GraphState):
     return state
 
 
-def run_execution_phase(state: GraphState):
+def run_execution_phase(state: GraphState) -> GraphState:
     execution_node = TestExecutionNode()
     state = execution_node(state)
     return state
@@ -44,17 +54,21 @@ if __name__ == "__main__":
 
     state = GraphState(project_path=project_path)
 
-    if phase == "generate":
-        gen_state = run_generation_phase(state)
-        print(json.dumps({
-            "analysis": gen_state.analysis,
-            "feature_text": gen_state.feature_text
-        }))
-    elif phase == "execute":
-        final_state = run_execution_phase(state)
-        print(json.dumps({
-            "execution_output": final_state.execution_output
-        }))
-    else:
-        print(json.dumps({"error": f"Unknown phase: {phase}"}))
+    try:
+        if phase == "generate":
+            gen_state = run_generation_phase(state)
+            print(json.dumps({
+                "analysis": gen_state.analysis,
+                "feature_text": gen_state.feature_text
+            }))
+        elif phase == "execute":
+            final_state = run_execution_phase(state)
+            print(json.dumps({
+                "execution_output": final_state.execution_output
+            }))
+        else:
+            print(json.dumps({"error": f"Unknown phase: {phase}"}))
+            sys.exit(1)
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
         sys.exit(1)
