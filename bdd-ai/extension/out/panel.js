@@ -200,3 +200,4 @@ class BDDPanel {
     }
 }
 exports.BDDPanel = BDDPanel;
+//# sourceMappingURL=panel.js.map

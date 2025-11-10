@@ -3,32 +3,61 @@
   "displayName": "AI BDD Test Generator",
   "description": "Generate and execute BDD tests automatically using OpenAI + LangGraph backend",
   "version": "1.0.0",
-  "engines": { "vscode": "^1.85.0" },
+  "publisher": "TestGenie",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
   "categories": ["AI", "Testing"],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:extension.generateBDD",
+    "onCommand:extension.executeBDD"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "extension.generateBDD",
         "title": "Generate BDD Tests"
+      },
+      {
+        "command": "extension.executeBDD",
+        "title": "Execute BDD Tests"
       }
-    ]
+    ],
+    "configuration": {
+    "title": "BDD AI Test Generator",
+    "properties": {
+      "bddai.openaiApiKey": {
+        "type": "string",
+        "default": "",
+        "description": "Enter your OpenAI API key here (used by Python backend)"
+      }
+    }
+  }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package",
+    "build:vsix": "npm run compile && npm run package"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.4.0",
-   "@vscode/test-electron": "^2.3.4"
+    "@vscode/test-electron": "^2.3.4",
+    "vsce": "^2.15.0"
   },
   "dependencies": {
     "axios": "^1.6.8"
-  }
+  },
+  "files": [
+    "out",
+    "agents",
+    "agents/**/*.py",
+    "requirements.txt"
+  ]
 }

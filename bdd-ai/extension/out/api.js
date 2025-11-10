@@ -39,22 +39,72 @@ exports.executeTests = executeTests;
 const child_process_1 = require("child_process");
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const vscode = __importStar(require("vscode"));
+/**
+ * Returns the Python interpreter path currently selected in VS Code.
+ * Falls back to "python" if no interpreter is set.
+ */
+async function getPythonPath() {
+    try {
+        const pythonExtension = vscode.extensions.getExtension("ms-python.python");
+        if (pythonExtension) {
+            if (!pythonExtension.isActive) {
+                await pythonExtension.activate();
+            }
+            const execDetails = pythonExtension.exports?.environment?.getExecutionDetails?.();
+            if (execDetails?.execCommand && execDetails.execCommand.length > 0) {
+                return execDetails.execCommand[0];
+            }
+        }
+        const config = vscode.workspace.getConfiguration("python");
+        const configPath = config.get("defaultInterpreterPath");
+        if (configPath)
+            return configPath;
+        return "python";
+    }
+    catch {
+        return "python";
+    }
+}
 /**
  * Run the Python backend with specified phase ("generate" or "execute")
  */
-function runPython(phase, inputPath) {
+async function runPython(phase, inputPath) {
+    const pythonPath = await getPythonPath();
+    // ✅ Use absolute path from installed extension root
+    const extension = vscode.extensions.getExtension("TestGenie.vscode-bdd-ai");
+    const extensionPath = extension?.extensionPath || __dirname;
+    const scriptPath = path.join(extensionPath, "agents", "main.py");
+    const openaiApiKey = process.env.OPENAI_API_KEY ||
+        vscode.workspace.getConfiguration("bddai").get("openaiApiKey") ||
+        "";
+    // 🔍 Debug info (helpful in Developer Tools console)
+    console.log("🐍 Python Path:", pythonPath);
+    console.log("📄 Script Path:", scriptPath);
+    console.log("📦 Exists:", fs.existsSync(scriptPath));
+    console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
     return new Promise((resolve, reject) => {
-        const scriptPath = path.join(__dirname, "../../src/main.py");
-        const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
-        const pythonArgs = [scriptPath, phase, inputPath];
-        const python = (0, child_process_1.spawn)(pythonPath, pythonArgs, {
-            cwd: path.join(__dirname, "../../src"),
+        const python = (0, child_process_1.spawn)(pythonPath, [scriptPath, phase, inputPath], {
+            cwd: path.dirname(scriptPath),
+            env: {
+                ...process.env,
+                OPENAI_API_KEY: openaiApiKey,
+            },
         });
         let output = "";
         let errorOutput = "";
-        python.stdout.on("data", (data) => (output += data.toString()));
-        python.stderr.on("data", (data) => (errorOutput += data.toString()));
+        python.stdout.on("data", (data) => {
+            const text = data.toString();
+            output += text;
+            console.log("🐍 stdout:", text);
+        });
+        python.stderr.on("data", (data) => {
+            const text = data.toString();
+            errorOutput += text;
+            console.error("🐍 stderr:", text);
+        });
         python.on("close", (code) => {
+            console.log("📤 Python process exited with code:", code);
             if (code !== 0) {
                 reject(new Error(errorOutput || "Python script failed"));
             }
@@ -62,7 +112,7 @@ function runPython(phase, inputPath) {
                 try {
                     resolve(JSON.parse(output));
                 }
-                catch {
+                catch (e) {
                     reject(new Error("Failed to parse Python output: " + output));
                 }
             }
@@ -96,17 +146,16 @@ function saveUpdatedFeatureFile(workspacePath, featureText) {
     const outputDir = path.join(workspacePath, "bdd_tests");
     if (!fs.existsSync(outputDir))
         fs.mkdirSync(outputDir, { recursive: true });
-    // 🧹 Clear old feature files
     clearOutputDir(outputDir);
-    // ✂️ Split by 'Feature:' while keeping the word
     const featureBlocks = featureText
         .split(/(?=Feature:)/g)
-        .map(f => f.trim())
-        .filter(f => f.length > 0);
+        .map((f) => f.trim())
+        .filter((f) => f.length > 0);
     featureBlocks.forEach((block, index) => {
-        // Derive a readable name
         const match = block.match(/Feature:\s*(.+)/);
-        const name = match ? match[1].trim().replace(/\s+/g, "_").toLowerCase() : `feature_${index}`;
+        const name = match
+            ? match[1].trim().replace(/\s+/g, "_").toLowerCase()
+            : `feature_${index}`;
         const filePath = path.join(outputDir, `${name}.feature`);
         fs.writeFileSync(filePath, block, "utf-8");
     });
@@ -116,9 +165,9 @@ function saveUpdatedFeatureFile(workspacePath, featureText) {
  * Executes BDD tests from workspace (after ensuring updated file is written)
  */
 async function executeTests(workspacePath, updatedFeatureText) {
-    // 🧩 If user edited feature text in panel, persist before running tests
     if (updatedFeatureText) {
         saveUpdatedFeatureFile(workspacePath, updatedFeatureText);
     }
     return runPython("execute", workspacePath);
 }
+//# sourceMappingURL=api.js.map

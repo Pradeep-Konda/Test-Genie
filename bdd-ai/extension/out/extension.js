@@ -72,3 +72,4 @@ function activate(context) {
     });
     context.subscriptions.push(disposable);
 }
+//# sourceMappingURL=extension.js.map
