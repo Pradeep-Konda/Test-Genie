@@ -1,17 +1,11 @@
 from nodes.code_analysis import CodeAnalysisNode
 from nodes.bdd_generation import BDDGenerationNode
 from nodes.test_execution import TestExecutionNode
-<<<<<<< HEAD:bdd-ai/src/main.py
-from pydantic import BaseModel
-from typing import Optional, Dict
-import json, sys, os
-=======
 from dataclasses import dataclass
 from typing import Optional
 import json
 import sys
 import os
->>>>>>> 6018aab7cd9f7d62a918747a4d399806ca0e059d:bdd-ai/extension/agents/main.py
 
 
 @dataclass

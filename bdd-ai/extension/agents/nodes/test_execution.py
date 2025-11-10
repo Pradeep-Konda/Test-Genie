@@ -104,7 +104,7 @@ class TestExecutionNode:
     # ------------------------------------------------------------------
     # Tool 2: HTML Report Generator
     # ------------------------------------------------------------------
-    def _generate_html_report(self, project_path: str, input_json: str):
+    def _generate_html_report(self, project_path: str, input_json: str, state=None):
         """Generates an HTML test execution report."""
 
         output_dir = os.path.join(project_path, "test_reports")
@@ -117,6 +117,10 @@ class TestExecutionNode:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
+             # --- Calculate OpenAPI coverage ---
+            coverage, uncovered = self._calculate_openapi_coverage(state)
+
+            # --- Build HTML ---
             html = [
                 "<html><head><title>API Test Report</title>",
                 "<style>body{font-family:Arial;margin:20px;}table{width:100%;border-collapse:collapse;}"
@@ -124,6 +128,7 @@ class TestExecutionNode:
                 ".pass{color:green;font-weight:bold;}.fail{color:red;font-weight:bold;}</style>",
                 "</head><body>",
                 f"<h1>API Test Execution Report</h1><p>Generated: {timestamp}</p>",
+                f"<h3>OpenAPI Coverage: {coverage:.2f}%</h3>",
                 "<table><tr><th>Scenario</th><th>Status</th><th>Response Code</th><th>cURL Command</th></tr>",
             ]
 
@@ -131,19 +136,126 @@ class TestExecutionNode:
                 scenario = r.get("scenario", "Unknown Scenario")
                 status = r.get("status", "UNKNOWN")
                 curl_cmd = r.get("curl_command", "N/A")
-                response_code = r.get("response_code", "N/A")
+                response_code = r.get("status", "N/A")
                 html.append(
                     f"<tr><td>{scenario}</td><td class='{status.lower()}'>{status}</td>"
                     f"<td>{response_code}</td><td><code>{curl_cmd}</code></td></tr>"
                 )
 
+            html.append("</table><h2>Executed cURL Commands</h2><ul>")
+            for cmd in curl_commands:
+                html.append(f"<li><code>{cmd}</code></li>")
+            html.append("</ul>")
+
+            # --- Display uncovered endpoints if any ---
+            if uncovered:
+                html.append("<h2>Uncovered Endpoints from OpenAPI Spec</h2><ul>")
+                for ep in uncovered:
+                    html.append(f"<li>{ep}</li>")
+                html.append("</ul>")
+
+            html.append("</body></html>")
+
             with open(html_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(html))
 
-            #print(f"📄 HTML report generated at: {html_path}")
-            return json.dumps({"html_report": html})
+            # # Save summary
+            # with open(self.results_path, "w", encoding="utf-8") as f:
+            #     json.dump({"results": results, "curl_commands": curl_commands}, f, indent=2)
+
+            print(f"📄 HTML report generated at: {html_path}")
+            return json.dumps({"html_report": html_path})
         except Exception as e:
             return json.dumps({"error": str(e)})
+        
+
+
+            
+
+
+        #     html = [
+        #         "<html><head><title>API Test Report</title>",
+        #         "<style>body{font-family:Arial;margin:20px;}table{width:100%;border-collapse:collapse;}"
+        #         "th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background:#f2f2f2;}"
+        #         ".pass{color:green;font-weight:bold;}.fail{color:red;font-weight:bold;}</style>",
+        #         "</head><body>",
+        #         f"<h1>API Test Execution Report</h1><p>Generated: {timestamp}</p>",
+        #         "<table><tr><th>Scenario</th><th>Status</th><th>Response Code</th><th>cURL Command</th></tr>",
+        #     ]
+
+        #     for r in results:
+        #         scenario = r.get("scenario", "Unknown Scenario")
+        #         status = r.get("status", "UNKNOWN")
+        #         curl_cmd = r.get("curl_command", "N/A")
+        #         response_code = r.get("response_code", "N/A")
+        #         html.append(
+        #             f"<tr><td>{scenario}</td><td class='{status.lower()}'>{status}</td>"
+        #             f"<td>{response_code}</td><td><code>{curl_cmd}</code></td></tr>"
+        #         )
+
+        #     with open(html_path, "w", encoding="utf-8") as f:
+        #         f.write("\n".join(html))
+
+        #     #print(f"📄 HTML report generated at: {html_path}")
+        #     return json.dumps({"html_report": html})
+        # except Exception as e:
+        #     return json.dumps({"error": str(e)})
+        
+        
+    # ------------------------------------------------------------------    
+    # OpenAPI Traceability & Coverage
+    # ------------------------------------------------------------------
+    def _calculate_openapi_coverage(self, state):
+
+        try:
+            # --- Load the OpenAPI spec from state.analysis instead of file ---
+            if not state or not hasattr(state, "analysis"):
+                print("⚠️ No state.analysis found — skipping OpenAPI coverage calculation.")
+                return 0.0, []
+
+            # Parse the analysis content (could be dict or JSON string)
+            if isinstance(state.analysis, str):
+                try:
+                    spec = json.loads(state.analysis)
+                except json.JSONDecodeError:
+                    print("⚠️ state.analysis is not valid JSON — skipping coverage calculation.")
+                    return 0.0, []
+            else:
+                spec = state.analysis
+
+            # --- Extract endpoint definitions from spec ---
+            if "paths" not in spec:
+                print("⚠️ No 'paths' key found in analysis — skipping coverage calculation.")
+                return 0.0, []
+
+            defined = {
+                f"{method.upper()} {path}"
+                for path, methods in spec.get("paths", {}).items()
+                for method in methods.keys()
+            }
+
+            # --- Extract executed endpoints from .feature files ---
+            executed = set()
+            for file in os.listdir(self.features_dir):
+                if not file.endswith(".feature"):
+                    continue
+                with open(os.path.join(self.features_dir, file), "r", encoding="utf-8") as f:
+                    text = f.read()
+                    for ep in defined:
+                        method, path = ep.split(" ", 1)
+                        if method in text and path in text:
+                            executed.add(ep)
+
+            uncovered = sorted(defined - executed)
+            coverage = (len(executed) / len(defined) * 100) if defined else 0
+            print(f"📊 OpenAPI Traceability Coverage: {coverage:.2f}% ({len(executed)}/{len(defined)})")
+            return coverage, uncovered
+
+        except Exception as e:
+            print(f"⚠️ Failed to calculate OpenAPI coverage: {e}")
+            return 0.0, []
+        
+
 
     # ------------------------------------------------------------------
     # Helper: Extract all scenarios
