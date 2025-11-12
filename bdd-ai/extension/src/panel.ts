@@ -9,7 +9,6 @@ export class BDDPanel {
   private constructor(panel: vscode.WebviewPanel, featureText: string) {
     this.panel = panel;
     this.featureText = featureText;
-
     this.panel.webview.html = this.getHtml(featureText);
 
     // Listen for messages from webview
@@ -42,7 +41,10 @@ export class BDDPanel {
       "bddPreview",
       "AI-Generated BDD Tests",
       vscode.ViewColumn.One,
-      { enableScripts: true }
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+      }
     );
 
     const newPanel = new BDDPanel(panel, featureText);
@@ -50,125 +52,132 @@ export class BDDPanel {
     return newPanel;
   }
 
-  /**
-   * Register callback when Run button is clicked
-   */
   onDidClickRun(callback: (featureText: string) => void) {
     this._onRunClicked = callback;
   }
 
-  /**
-   * Get latest feature text (after user edits)
-   */
   getFeatureText(): string {
     return this.featureText;
   }
 
-  /**
-   * Show test execution output
-   */
   showOutput(output: string) {
     this.panel.webview.postMessage({ type: "output", output });
   }
 
-  /**
-   * Update webview content (on new test generation)
-   */
   private update(featureText: string) {
     this.featureText = featureText;
     this.panel.webview.html = this.getHtml(featureText);
   }
 
-  /**
-   * Clean up
-   */
   private dispose() {
     BDDPanel.currentPanel = undefined;
     this.panel.dispose();
   }
 
-  /**
-   * Generate HTML content for the panel
-   */
   private getHtml(featureText: string): string {
-    const escaped = featureText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    return `
+    const escaped = featureText
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(
+        /(Feature:|Scenario:|Given |When |Then |And )/g,
+        `<span class="keyword">$1</span>`
+      );
+
+    return /* html */ `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AI-Generated BDD Tests</title>
         <style>
+          :root {
+            color-scheme: light dark;
+          }
+
           body {
-            font-family: sans-serif;
-            padding: 10px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: var(--vscode-editor-font-size);
+            color: var(--vscode-editor-foreground);
+            background-color: var(--vscode-editor-background);
+            padding: 16px;
+            white-space: pre-wrap;
+            overflow-y: auto;
           }
+
           h2 {
-            margin-bottom: 8px;
+            color: var(--vscode-editor-foreground);
+            border-bottom: 1px solid var(--vscode-editorWidget-border);
+            padding-bottom: 6px;
+            margin-bottom: 12px;
           }
-          textarea {
-            width: 100%;
+
+          pre {
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-editorWidget-border);
+            border-radius: 6px;
+            padding: 12px;
+            color: var(--vscode-editor-foreground);
+            font-family: var(--vscode-editor-font-family);
+            font-size: var(--vscode-editor-font-size);
             height: 60vh;
-            font-family: monospace;
-            font-size: 14px;
-            padding: 8px;
+            overflow-y: auto;
+            outline: none;
           }
+
+          .keyword {
+            color: var(--vscode-editor-keywordForeground, #c586c0);
+            font-weight: bold;
+          }
+
           button {
-            margin-top: 10px;
-            background-color: #007acc;
-            color: white;
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
             border: none;
             padding: 8px 16px;
-            border-radius: 5px;
+            border-radius: 6px;
             cursor: pointer;
+            margin-top: 12px;
           }
+
           button:hover {
-            background-color: #005fa3;
+            background-color: var(--vscode-button-hoverBackground);
           }
+
           #output {
-          margin-top: 15px;
-          background: #f3f3f3;
-          padding: 10px;
-          border-radius: 6px;
-          height: 30vh;
-          overflow-y: auto;
-          white-space: normal;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
+            margin-top: 15px;
+            background: var(--vscode-editorWidget-background);
+            color: var(--vscode-editor-foreground);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--vscode-editorWidget-border);
+            height: 30vh;
+            overflow-y: auto;
           }
-          th, td {
-            border: 1px solid #ccc;
-            padding: 8px;
-            text-align: left;
-          }
-          th {
-            background: #f2f2f2;
-          }
+
           .pass {
-            color: green;
+            color: var(--vscode-testing-iconPassed, #4caf50);
             font-weight: bold;
           }
           .fail {
-            color: red;
+            color: var(--vscode-testing-iconFailed, #f14c4c);
             font-weight: bold;
           }
         </style>
       </head>
       <body>
         <h2>Generated Test Cases</h2>
-        <textarea id="featureText">${escaped}</textarea>
-        <br/>
+        <pre id="featureText" contenteditable="true">${escaped}</pre>
         <button id="runTests">▶ Run Tests</button>
         <div id="output"></div>
 
         <script>
           const vscode = acquireVsCodeApi();
-          const area = document.getElementById('featureText');
-          const output = document.getElementById('output');
+          const featureTextEl = document.getElementById('featureText');
+          const outputEl = document.getElementById('output');
 
-          area.addEventListener('input', () => {
-            vscode.postMessage({ type: 'updateText', text: area.value });
+          featureTextEl.addEventListener('input', () => {
+            vscode.postMessage({ type: 'updateText', text: featureTextEl.innerText });
           });
 
           document.getElementById('runTests').addEventListener('click', () => {
@@ -178,8 +187,8 @@ export class BDDPanel {
           window.addEventListener('message', (event) => {
             const message = event.data;
             if (message.type === 'output') {
-              output.innerHTML  = message.output;
-              output.scrollTop = output.scrollHeight; // auto-scroll
+              outputEl.innerHTML = message.output;
+              outputEl.scrollTop = outputEl.scrollHeight;
             }
           });
         </script>

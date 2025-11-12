@@ -167,10 +167,7 @@ class TestExecutionNode:
                     f"<td>{response_code}</td><td><code>{curl_cmd}</code></td></tr>"
                 )
 
-            html.append("</table><h2>Executed cURL Commands</h2><ul>")
-            for cmd in curl_commands:
-                html.append(f"<li><code>{cmd}</code></li>")
-            html.append("</ul>")
+            html.append("</table>")
 
             # --- Display uncovered endpoints if any ---
             if uncovered:
