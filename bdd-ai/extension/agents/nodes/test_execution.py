@@ -8,6 +8,8 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import Tool
 from langchain_core.messages import SystemMessage, HumanMessage
+import glob
+import yaml
 
 
 
@@ -24,6 +26,7 @@ class TestExecutionNode:
 
         # Initialize LLM
         self.llm = ChatOpenAI(model="gpt-4.1", temperature=0)
+
 
         # Tools
         self.tools = [
@@ -67,6 +70,23 @@ class TestExecutionNode:
         )
 
     # ------------------------------------------------------------------
+    # Tool 1: Find latest openapi spec from output
+    # ------------------------------------------------------------------
+    def _find_latest_openapi_spec(self, openapi_dir: str):
+        """Finds the newest OpenAPI spec file (.yaml or .json) in the outputs directory."""
+        try:
+            candidates = glob.glob(os.path.join(openapi_dir, "openapi_*.*"))
+            if not candidates:
+                return None
+
+            latest = max(candidates, key=os.path.getmtime)
+            return latest
+        except Exception as e:
+            return None
+        
+    
+
+    # ------------------------------------------------------------------
     # Tool 1: Curl Execution Engine
     # ------------------------------------------------------------------
     def _run_curl_command(self, input_json: str):
@@ -104,11 +124,12 @@ class TestExecutionNode:
     # ------------------------------------------------------------------
     # Tool 2: HTML Report Generator
     # ------------------------------------------------------------------
-    def _generate_html_report(self, project_path: str, input_json: str, state=None):
+    def _generate_html_report(self, project_path: str, input_json: str):
         """Generates an HTML test execution report."""
 
         output_dir = os.path.join(project_path, "test_reports")
         os.makedirs(output_dir, exist_ok=True)
+        
 
         try:
             data = json.loads(input_json)
@@ -117,8 +138,12 @@ class TestExecutionNode:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
+            openapi_dir = os.path.join(project_path, "output")
+
+            
              # --- Calculate OpenAPI coverage ---
-            coverage, uncovered = self._calculate_openapi_coverage(state)
+            openapi_path = self._find_latest_openapi_spec(openapi_dir)
+            coverage, uncovered = self._calculate_openapi_coverage(openapi_path, project_path)
 
             # --- Build HTML ---
             html = [
@@ -128,7 +153,7 @@ class TestExecutionNode:
                 ".pass{color:green;font-weight:bold;}.fail{color:red;font-weight:bold;}</style>",
                 "</head><body>",
                 f"<h1>API Test Execution Report</h1><p>Generated: {timestamp}</p>",
-                f"<h3>OpenAPI Coverage: {coverage:.2f}%</h3>",
+                f"<h3>Test Coverage: {coverage:.2f}%</h3>",
                 "<table><tr><th>Scenario</th><th>Status</th><th>Response Code</th><th>cURL Command</th></tr>",
             ]
 
@@ -159,74 +184,26 @@ class TestExecutionNode:
             with open(html_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(html))
 
-            # # Save summary
-            # with open(self.results_path, "w", encoding="utf-8") as f:
-            #     json.dump({"results": results, "curl_commands": curl_commands}, f, indent=2)
-
-            print(f"📄 HTML report generated at: {html_path}")
-            return json.dumps({"html_report": html_path})
+            return json.dumps({"html_report": html})
         except Exception as e:
             return json.dumps({"error": str(e)})
-        
-
-
-            
-
-
-        #     html = [
-        #         "<html><head><title>API Test Report</title>",
-        #         "<style>body{font-family:Arial;margin:20px;}table{width:100%;border-collapse:collapse;}"
-        #         "th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background:#f2f2f2;}"
-        #         ".pass{color:green;font-weight:bold;}.fail{color:red;font-weight:bold;}</style>",
-        #         "</head><body>",
-        #         f"<h1>API Test Execution Report</h1><p>Generated: {timestamp}</p>",
-        #         "<table><tr><th>Scenario</th><th>Status</th><th>Response Code</th><th>cURL Command</th></tr>",
-        #     ]
-
-        #     for r in results:
-        #         scenario = r.get("scenario", "Unknown Scenario")
-        #         status = r.get("status", "UNKNOWN")
-        #         curl_cmd = r.get("curl_command", "N/A")
-        #         response_code = r.get("response_code", "N/A")
-        #         html.append(
-        #             f"<tr><td>{scenario}</td><td class='{status.lower()}'>{status}</td>"
-        #             f"<td>{response_code}</td><td><code>{curl_cmd}</code></td></tr>"
-        #         )
-
-        #     with open(html_path, "w", encoding="utf-8") as f:
-        #         f.write("\n".join(html))
-
-        #     #print(f"📄 HTML report generated at: {html_path}")
-        #     return json.dumps({"html_report": html})
-        # except Exception as e:
-        #     return json.dumps({"error": str(e)})
         
         
     # ------------------------------------------------------------------    
     # OpenAPI Traceability & Coverage
     # ------------------------------------------------------------------
-    def _calculate_openapi_coverage(self, state):
-
+    def _calculate_openapi_coverage(self, openapi_path: str, project_path: str):
+        
         try:
-            # --- Load the OpenAPI spec from state.analysis instead of file ---
-            if not state or not hasattr(state, "analysis"):
-                print("⚠️ No state.analysis found — skipping OpenAPI coverage calculation.")
+            if not openapi_path or not os.path.exists(openapi_path):
                 return 0.0, []
 
-            # Parse the analysis content (could be dict or JSON string)
-            if isinstance(state.analysis, str):
-                try:
-                    spec = json.loads(state.analysis)
-                except json.JSONDecodeError:
-                    print("⚠️ state.analysis is not valid JSON — skipping coverage calculation.")
-                    return 0.0, []
-            else:
-                spec = state.analysis
-
-            # --- Extract endpoint definitions from spec ---
-            if "paths" not in spec:
-                print("⚠️ No 'paths' key found in analysis — skipping coverage calculation.")
-                return 0.0, []
+            # Auto-load YAML or JSON
+            with open(openapi_path, "r", encoding="utf-8") as f:
+                if openapi_path.endswith((".yaml", ".yml")):
+                    spec = yaml.safe_load(f)
+                else:
+                    spec = json.load(f)
 
             defined = {
                 f"{method.upper()} {path}"
@@ -235,11 +212,12 @@ class TestExecutionNode:
             }
 
             # --- Extract executed endpoints from .feature files ---
+            features_dir  = os.path.join(project_path, self.features_dir)
             executed = set()
-            for file in os.listdir(self.features_dir):
+            for file in os.listdir(features_dir):
                 if not file.endswith(".feature"):
                     continue
-                with open(os.path.join(self.features_dir, file), "r", encoding="utf-8") as f:
+                with open(os.path.join(features_dir, file), "r", encoding="utf-8") as f:
                     text = f.read()
                     for ep in defined:
                         method, path = ep.split(" ", 1)
@@ -248,14 +226,12 @@ class TestExecutionNode:
 
             uncovered = sorted(defined - executed)
             coverage = (len(executed) / len(defined) * 100) if defined else 0
-            print(f"📊 OpenAPI Traceability Coverage: {coverage:.2f}% ({len(executed)}/{len(defined)})")
             return coverage, uncovered
 
         except Exception as e:
             print(f"⚠️ Failed to calculate OpenAPI coverage: {e}")
             return 0.0, []
         
-
 
     # ------------------------------------------------------------------
     # Helper: Extract all scenarios
@@ -273,6 +249,7 @@ class TestExecutionNode:
                 all_text += "\n\n--- " + os.path.basename(path) + " ---\n" + f.read()
         return [s.strip() for s in re.split(r"\bScenario:", all_text) if s.strip()]
 
+
     # ------------------------------------------------------------------
     # Execute All Scenarios in Batches → ONE combined report
     # ------------------------------------------------------------------
@@ -282,14 +259,12 @@ class TestExecutionNode:
             if not scenarios:
                 raise ValueError("No scenarios found in feature files")
 
-            #print(f"🧩 Found {len(scenarios)} scenarios — running in batches of {batch_size}")
 
             all_results = []
             all_curls = []
 
             for i in range(0, len(scenarios), batch_size):
                 batch = scenarios[i:i + batch_size]
-                #print(f"\n🚀 Executing batch {i//batch_size + 1}: {len(batch)} scenarios")
 
                 batch_text = "\n\n".join(batch)
                 messages = [
@@ -334,19 +309,15 @@ class TestExecutionNode:
                 if parsed:
                     all_results.extend(parsed.get("results", []))
                     all_curls.extend(parsed.get("curl_commands", []))
-                    #print(f"✅ Batch {i//batch_size + 1} parsed successfully ({len(parsed.get('results', []))} results).")
                 else:
                     print(f"⚠️ Could not parse AI output as JSON for batch {i//batch_size + 1}. Skipping...")
 
             # ✅ Generate one combined HTML report for all batches
-            #print("\n🧾 Generating final combined HTML report...")
             report_input = json.dumps({"results": all_results, "curl_commands": all_curls})
             report_json = self._generate_html_report(state.project_path, report_input)
             report_html = json.loads(report_json).get("html_report")
 
-            #print(f"\n🎉 All batches executed successfully!")
-            #print(f"📄 Combined HTML report: {report_path}")
-
+           
             state.execution_output = report_html
         except Exception as e:
             print(f"⚠️ Test Execution Error: {e}")

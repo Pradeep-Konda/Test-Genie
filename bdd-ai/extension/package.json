@@ -7,7 +7,10 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["AI", "Testing"],
+  "categories": [
+    "AI",
+    "Testing"
+  ],
   "activationEvents": [
     "onCommand:extension.generateBDD",
     "onCommand:extension.executeBDD"
@@ -25,15 +28,15 @@
       }
     ],
     "configuration": {
-    "title": "BDD AI Test Generator",
-    "properties": {
-      "bddai.openaiApiKey": {
-        "type": "string",
-        "default": "",
-        "description": "Enter your OpenAI API key here (used by Python backend)"
+      "title": "BDD AI Test Generator",
+      "properties": {
+        "bddai.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Enter your OpenAI API key here (used by Python backend)"
+        }
       }
     }
-  }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -47,8 +50,8 @@
   "devDependencies": {
     "@types/node": "^20.19.24",
     "@types/vscode": "^1.85.0",
-    "typescript": "^5.4.0",
     "@vscode/test-electron": "^2.3.4",
+    "typescript": "^5.4.0",
     "vsce": "^2.15.0"
   },
   "dependencies": {

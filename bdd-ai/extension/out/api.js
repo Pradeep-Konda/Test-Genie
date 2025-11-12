@@ -84,21 +84,12 @@ async function runPython(phase, inputPath) {
     console.log("📦 Exists:", fs.existsSync(scriptPath));
     console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
     return new Promise((resolve, reject) => {
-<<<<<<< HEAD
-        const scriptPath = path.join(__dirname, "../../src/main.py");
-        // const pythonPath = path.join(__dirname, "../../venv/Scripts/python.exe");
-        const pythonPath = "C:\\Users\\Vikhil.N\\AppData\\Local\\Programs\\Python\\Python314\\python.exe";
-        const pythonArgs = [scriptPath, phase, input, "--dir"];
-        const python = (0, child_process_1.spawn)(pythonPath, pythonArgs, {
-            cwd: path.join(__dirname, "../../src"),
-=======
         const python = (0, child_process_1.spawn)(pythonPath, [scriptPath, phase, inputPath], {
             cwd: path.dirname(scriptPath),
             env: {
                 ...process.env,
                 OPENAI_API_KEY: openaiApiKey,
             },
->>>>>>> 6018aab7cd9f7d62a918747a4d399806ca0e059d
         });
         let output = "";
         let errorOutput = "";
