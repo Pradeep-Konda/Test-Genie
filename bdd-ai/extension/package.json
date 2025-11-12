@@ -14,10 +14,31 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "featureExplorer",
+          "name": "Feature Explorer"
+        }
+      ]
+    },
+    "menus": {
+    "view/item/context": [
+      {
+        "command": "featureExplorer.refresh",
+        "when": "view == featureExplorer",
+        "group": "navigation"
+      }
+    ]
+  },
     "commands": [
       {
         "command": "extension.generateBDD",
         "title": "Generate BDD Tests"
+      },
+      {
+      "command": "featureExplorer.refresh",
+      "title": "🔄 Refresh Feature Explorer"
       },
       {
         "command": "extension.executeBDD",

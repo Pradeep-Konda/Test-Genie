@@ -1,3 +1,4 @@
+import io
 from nodes.code_analysis import CodeAnalysisNode
 from nodes.bdd_generation import BDDGenerationNode
 from nodes.test_execution import TestExecutionNode
@@ -6,6 +7,9 @@ from typing import Optional
 import json
 import sys
 import os
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 
 @dataclass
