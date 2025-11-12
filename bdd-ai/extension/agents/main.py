@@ -18,6 +18,8 @@ class GraphState:
     analysis: Optional[str] = None
     feature_text: Optional[str] = None
     execution_output: Optional[str] = None
+    report_message: Optional[str] = None
+
 
 
 def run_generation_phase(state: GraphState) -> GraphState:
