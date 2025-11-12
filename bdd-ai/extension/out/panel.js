@@ -171,6 +171,7 @@ class BDDPanel {
         <textarea id="featureText">${escaped}</textarea>
         <br/>
         <button id="runTests">▶ Run Tests</button>
+        <button id="refreshTests" disabled>⟳ Refresh Tests (after editing)</button>
         <div id="output"></div>
 
         <script>

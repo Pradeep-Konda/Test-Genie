@@ -89,6 +89,7 @@ async function runPython(phase, inputPath) {
             env: {
                 ...process.env,
                 OPENAI_API_KEY: openaiApiKey,
+                PYTHONIOENCODING: "utf-8",
             },
         });
         let output = "";

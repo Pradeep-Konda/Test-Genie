@@ -65,6 +65,7 @@ async function runPython(phase: string, inputPath: string): Promise<BDDResult> {
       env: {
         ...process.env,
         OPENAI_API_KEY: openaiApiKey,
+        PYTHONIOENCODING: "utf-8",
       },
     });
 
