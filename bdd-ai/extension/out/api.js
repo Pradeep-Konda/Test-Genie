@@ -69,7 +69,7 @@ async function getPythonPath() {
 /**
  * Run the Python backend with specified phase ("generate" or "execute")
  */
-async function runPython(phase, inputPath) {
+async function runPython(phase, inputPath, updatedFeatureText) {
     const pythonPath = await getPythonPath();
     // ✅ Use absolute path from installed extension root
     const extension = vscode.extensions.getExtension("TestGenie.vscode-bdd-ai");
@@ -83,13 +83,16 @@ async function runPython(phase, inputPath) {
     console.log("📄 Script Path:", scriptPath);
     console.log("📦 Exists:", fs.existsSync(scriptPath));
     console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
+    //const featureArg = updatedFeatureText ? Buffer.from(updatedFeatureText, "utf-8").toString("base64") : "";
     return new Promise((resolve, reject) => {
-        const python = (0, child_process_1.spawn)(pythonPath, [scriptPath, phase, inputPath], {
+        const args = updatedFeatureText
+            ? [scriptPath, phase, inputPath, updatedFeatureText]
+            : [scriptPath, phase, inputPath];
+        const python = (0, child_process_1.spawn)(pythonPath, args, {
             cwd: path.dirname(scriptPath),
             env: {
                 ...process.env,
                 OPENAI_API_KEY: openaiApiKey,
-                PYTHONIOENCODING: "utf-8",
             },
         });
         let output = "";
@@ -166,9 +169,6 @@ function saveUpdatedFeatureFile(workspacePath, featureText) {
  * Executes BDD tests from workspace (after ensuring updated file is written)
  */
 async function executeTests(workspacePath, updatedFeatureText) {
-    if (updatedFeatureText) {
-        saveUpdatedFeatureFile(workspacePath, updatedFeatureText);
-    }
-    return runPython("execute", workspacePath);
+    return runPython("execute", workspacePath, updatedFeatureText);
 }
 //# sourceMappingURL=api.js.map
