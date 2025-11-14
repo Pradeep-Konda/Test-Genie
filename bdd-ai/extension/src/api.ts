@@ -40,7 +40,7 @@ async function getPythonPath(): Promise<string> {
 /**
  * Run the Python backend with specified phase ("generate" or "execute")
  */
-async function runPython(phase: string, inputPath: string): Promise<BDDResult> {
+async function runPython(phase: string, inputPath: string, updatedFeatureText?: string): Promise<BDDResult> {
   const pythonPath = await getPythonPath();
 
   // ✅ Use absolute path from installed extension root
@@ -59,13 +59,17 @@ async function runPython(phase: string, inputPath: string): Promise<BDDResult> {
   console.log("📦 Exists:", fs.existsSync(scriptPath));
   console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
 
+  //const featureArg = updatedFeatureText ? Buffer.from(updatedFeatureText, "utf-8").toString("base64") : "";
+
   return new Promise((resolve, reject) => {
-    const python = spawn(pythonPath, [scriptPath, phase, inputPath], {
+    const args = updatedFeatureText
+      ? [scriptPath, phase, inputPath, updatedFeatureText]
+      : [scriptPath, phase, inputPath];
+    const python = spawn(pythonPath, args, {
       cwd: path.dirname(scriptPath),
       env: {
         ...process.env,
         OPENAI_API_KEY: openaiApiKey,
-        PYTHONIOENCODING: "utf-8",
       },
     });
 
@@ -150,9 +154,6 @@ export function saveUpdatedFeatureFile(workspacePath: string, featureText: strin
  * Executes BDD tests from workspace (after ensuring updated file is written)
  */
 export async function executeTests(workspacePath: string, updatedFeatureText?: string) {
-  if (updatedFeatureText) {
-    saveUpdatedFeatureFile(workspacePath, updatedFeatureText);
-  }
 
-  return runPython("execute", workspacePath);
+  return runPython("execute", workspacePath, updatedFeatureText);
 }

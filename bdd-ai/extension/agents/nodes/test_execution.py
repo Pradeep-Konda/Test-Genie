@@ -45,7 +45,7 @@ class TestExecutionNode:
                 func=self._generate_html_report,
                 description=(
                     "Generates a visual HTML test report. Input JSON: "
-                    "{ 'results': [...], 'curl_commands': [...] } and returns the HTML file path."
+                    "{ 'results': [...], 'curl_commands': [...] } and returns the report in HTML format."
                 ),
             ),
         ]
@@ -228,23 +228,6 @@ class TestExecutionNode:
         except Exception as e:
             print(f"⚠️ Failed to calculate OpenAPI coverage: {e}")
             return 0.0, []
-        
-
-    # ------------------------------------------------------------------
-    # Helper: Extract all scenarios
-    # ------------------------------------------------------------------
-    def _extract_scenarios(self, project_path: str) -> list:
-        features_path = os.path.join(project_path, self.features_dir)
-        files = [
-            os.path.join(features_path, f)
-            for f in os.listdir(features_path)
-            if f.endswith(".feature")
-        ]
-        all_text = ""
-        for path in files:
-            with open(path, "r", encoding="utf-8") as f:
-                all_text += "\n\n--- " + os.path.basename(path) + " ---\n" + f.read()
-        return [s.strip() for s in re.split(r"\bScenario:", all_text) if s.strip()]
 
 
     # ------------------------------------------------------------------
@@ -252,7 +235,7 @@ class TestExecutionNode:
     # ------------------------------------------------------------------
     def __call__(self, state, batch_size: int = 5):
         try:
-            scenarios = self._extract_scenarios(state.project_path)
+            scenarios = [s.strip() for s in re.split(r"\bScenario:", state.feature_text) if s.strip()]
             if not scenarios:
                 raise ValueError("No scenarios found in feature files")
 
@@ -320,4 +303,3 @@ class TestExecutionNode:
             print(f"⚠️ Test Execution Error: {e}")
             state.execution_output = {"error": str(e)}
         return state
-

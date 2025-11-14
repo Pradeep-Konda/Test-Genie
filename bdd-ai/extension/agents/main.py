@@ -8,9 +8,6 @@ import json
 import sys
 import os
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-
 
 @dataclass
 class GraphState:
@@ -60,6 +57,7 @@ if __name__ == "__main__":
                 "feature_text": gen_state.feature_text
             }))
         elif phase == "execute":
+            state.feature_text = sys.argv[3]
             final_state = run_execution_phase(state)
             print(json.dumps({
                 "execution_output": final_state.execution_output
