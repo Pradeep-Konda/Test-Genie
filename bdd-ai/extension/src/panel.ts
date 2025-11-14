@@ -1,10 +1,15 @@
 import * as vscode from "vscode";
 
 export class BDDPanel {
+  private currentFilePath: string | null = null;
   static currentPanel: BDDPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private featureText: string = "";
   private _onRunClicked: ((featureText: string) => void) | undefined;
+
+  setFilePath(filePath: string) {
+  this.currentFilePath = filePath;
+}
 
   private constructor(panel: vscode.WebviewPanel, featureText: string) {
     this.panel = panel;
@@ -21,6 +26,22 @@ export class BDDPanel {
           case "run":
             if (this._onRunClicked) this._onRunClicked(this.featureText);
             break;
+          case "save":
+            if (this.currentFilePath) {
+              vscode.commands.executeCommand(
+                "extension.saveThisFeature",
+                this.currentFilePath,
+                this.featureText
+              );
+            } else {
+              vscode.window.showErrorMessage("❌ Cannot save: No file path detected.");
+            }
+            break;
+          case "saveVersion":
+            vscode.commands.executeCommand("extension.saveVersionFolder");
+            break;
+
+
         }
       },
       undefined,
@@ -162,13 +183,24 @@ export class BDDPanel {
           .fail {
             color: var(--vscode-testing-iconFailed, #f14c4c);
             font-weight: bold;
+
+          .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+          }
+
           }
         </style>
       </head>
       <body>
         <h2>Generated Test Cases</h2>
         <pre id="featureText" contenteditable="true">${escaped}</pre>
-        <button id="runTests">▶ Run Tests</button>
+        <div class="button-row">
+            <button id="runTests">▶ Run Tests</button>
+            <button id="saveFeature">💾 Save</button>
+            <button id="saveVersion">📦 Save Version</button>
+        </div>
         <div id="output"></div>
 
         <script>
@@ -183,6 +215,16 @@ export class BDDPanel {
           document.getElementById('runTests').addEventListener('click', () => {
             vscode.postMessage({ type: 'run' });
           });
+
+          document.getElementById('saveFeature').addEventListener('click', () => {
+            vscode.postMessage({ type: 'save' });
+          });
+
+          document.getElementById('saveVersion').addEventListener('click', () => {
+            vscode.postMessage({ type: 'saveVersion' });
+          });
+
+
 
           window.addEventListener('message', (event) => {
             const message = event.data;
