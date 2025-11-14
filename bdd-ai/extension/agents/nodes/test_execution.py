@@ -10,7 +10,20 @@ from langchain_core.tools import Tool
 from langchain_core.messages import SystemMessage, HumanMessage
 import glob
 import yaml
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel
+from typing import List, Optional, Any, Dict
 
+
+class CurlInput(BaseModel):
+    method: str
+    url: str
+    body: Optional[str] = None
+
+# class ReportInput(BaseModel):
+#     project_path: str
+#     results: List[Dict[str, Any]]
+#     curl_commands: List[str] = []
 
 
 
@@ -30,7 +43,7 @@ class TestExecutionNode:
 
         # Tools
         self.tools = [
-            Tool(
+            StructuredTool.from_function(
                 name="CurlExecutor",
                 func=self._run_curl_command,
                 description=(
@@ -45,10 +58,11 @@ class TestExecutionNode:
                 func=self._generate_html_report,
                 description=(
                     "Generates a visual HTML test report. Input JSON: "
-                    "{ 'results': [...], 'curl_commands': [...] } and returns the report in HTML format."
+                    "{ 'results': [...], 'curl_commands': [...] } and returns the HTML file path."
                 ),
             ),
         ]
+
 
         # System prompt
         self.system_prompt = (
@@ -89,44 +103,49 @@ class TestExecutionNode:
     # ------------------------------------------------------------------
     # Tool 1: Curl Execution Engine
     # ------------------------------------------------------------------
-    def _run_curl_command(self, input_json: str):
-        """Executes a REST API call using curl."""
+    def _run_curl_command(self, method: str, url: str, body: Optional[str] = None):
+        """
+        Structured Curl executor that takes separate args (for StructuredTool).
+        Returns a dict (not JSON string) so agent tooling can serialize naturally.
+        """
         try:
-            data = json.loads(input_json)
-            method = data.get("method", "GET").upper()
-            url = data.get("url")
-            body = data.get("body")
-
-            if not url:
-                return json.dumps({"error": "URL missing"})
-
-            cmd = ["curl", "-s", "-X", method, url, "-w", "\nHTTP_STATUS:%{http_code}\n"]
+            m = method.upper()
+            # If URL is relative (e.g., starts with '/'), leave as-is; the environment should resolve host
+            cmd = ["curl", "-s", "-X", m, url, "-w", "\nHTTP_STATUS:%{http_code}\n"]
             if body:
                 cmd += ["-H", "Content-Type: application/json", "-d", body]
 
+            # run curl
             result = subprocess.run(cmd, capture_output=True, text=True)
-            stdout = result.stdout
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
 
+            # Extract HTTP status
             status_match = re.search(r"HTTP_STATUS:(\d+)", stdout)
             status = int(status_match.group(1)) if status_match else None
             response_body = re.sub(r"HTTP_STATUS:\d+", "", stdout).strip()
 
-            return json.dumps({
+            return {
                 "url": url,
-                "method": method,
+                "method": m,
                 "status": status,
                 "response": response_body,
                 "curl_command": " ".join(cmd),
-            }, indent=2)
+                "stderr": stderr if stderr else None,
+            }
+        # except subprocess.TimeoutExpired:
+        #     return {"error": f"Request timed out for {url}"}
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
+
+
 
     # ------------------------------------------------------------------
     # Tool 2: HTML Report Generator
     # ------------------------------------------------------------------
-    def _generate_html_report(self, project_path: str, input_json: str):
+    def _generate_html_report(self, state, input_json: str):
         """Generates an HTML test execution report."""
-
+        project_path = state.project_path
         output_dir = os.path.join(project_path, "test_reports")
         os.makedirs(output_dir, exist_ok=True)
         
@@ -143,7 +162,7 @@ class TestExecutionNode:
             
              # --- Calculate OpenAPI coverage ---
             openapi_path = self._find_latest_openapi_spec(openapi_dir)
-            coverage, uncovered = self._calculate_openapi_coverage(openapi_path, project_path)
+            coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, openapi_path)
 
             # --- Build HTML ---
             html = [
@@ -189,8 +208,8 @@ class TestExecutionNode:
     # ------------------------------------------------------------------    
     # OpenAPI Traceability & Coverage
     # ------------------------------------------------------------------
-    def _calculate_openapi_coverage(self, openapi_path: str, project_path: str):
-        
+    def _calculate_openapi_coverage(self, features, openapi_path: str):
+
         try:
             if not openapi_path or not os.path.exists(openapi_path):
                 return 0.0, []
@@ -202,31 +221,50 @@ class TestExecutionNode:
                 else:
                     spec = json.load(f)
 
-            defined = {
-                f"{method.upper()} {path}"
-                for path, methods in spec.get("paths", {}).items()
-                for method in methods.keys()
-            }
+            base_path = ""
+            servers = spec.get("servers", [])
+            if servers and isinstance(servers, list):
+                url = servers[0].get("url")
+                if isinstance(url, str):
+                    base_path = url.rstrip("/") 
 
-            # --- Extract executed endpoints from .feature files ---
-            features_dir  = os.path.join(project_path, self.features_dir)
-            executed = set()
-            for file in os.listdir(features_dir):
-                if not file.endswith(".feature"):
-                    continue
-                with open(os.path.join(features_dir, file), "r", encoding="utf-8") as f:
-                    text = f.read()
-                    for ep in defined:
-                        method, path = ep.split(" ", 1)
-                        if method in text and path in text:
-                            executed.add(ep)
+            defined = []
+            for path, methods in spec.get("paths", {}).items():
+                for method in methods.keys():
 
-            uncovered = sorted(defined - executed)
-            coverage = (len(executed) / len(defined) * 100) if defined else 0
+                    # Apply base_path ⇒ "/api" + "/users/"
+                    full_path = f"{base_path}{path}"
+
+                    # Convert OpenAPI params → regex
+                    regex_path = re.sub(r"\{[^/]+\}", r"[^/]+", full_path)
+
+                    # Build regex (allow exact or trailing slash match)
+                    pattern = re.compile(rf"{regex_path}(/)?")
+                    defined.append((method.upper(), full_path, pattern))
+
+            # Use state.features instead of reading any files
+            feature_text = features if isinstance(features, str) else "\n".join(features)
+
+            executed_matches = set()
+
+            for method, full_path, pattern in defined:
+
+                # Method must appear anywhere in scenario
+                if method in feature_text:
+                    # Search for matching URL usage
+                    if pattern.search(feature_text):
+                        executed_matches.add((method, full_path))
+
+            # Compute coverage
+            defined_set = {(m, p) for m, p, _ in defined}
+            executed_set = set(executed_matches)
+
+            uncovered = sorted([f"{m} {p}" for (m, p) in (defined_set - executed_set)])
+            coverage = (len(executed_set) / len(defined_set) * 100) if defined_set else 0.0
+
             return coverage, uncovered
 
         except Exception as e:
-            print(f"⚠️ Failed to calculate OpenAPI coverage: {e}")
             return 0.0, []
 
 
@@ -294,12 +332,11 @@ class TestExecutionNode:
 
             # ✅ Generate one combined HTML report for all batches
             report_input = json.dumps({"results": all_results, "curl_commands": all_curls})
-            report_json = self._generate_html_report(state.project_path, report_input)
+            report_json = self._generate_html_report(state, report_input)
             report_html = json.loads(report_json).get("html_report")
 
            
             state.execution_output = report_html
         except Exception as e:
-            print(f"⚠️ Test Execution Error: {e}")
             state.execution_output = {"error": str(e)}
         return state
