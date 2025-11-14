@@ -41,6 +41,54 @@ const path = __importStar(require("path"));
 const api_1 = require("./api");
 const panel_1 = require("./panel");
 function activate(context) {
+    function getFormattedTimestamp() {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, "0");
+        const dd = String(now.getDate()).padStart(2, "0");
+        const hh = String(now.getHours()).padStart(2, "0");
+        const min = String(now.getMinutes()).padStart(2, "0");
+        const ss = String(now.getSeconds()).padStart(2, "0");
+        return `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
+    }
+    const saveFileCmd = vscode.commands.registerCommand("extension.saveThisFeature", async (filePath, updatedText) => {
+        try {
+            fs.writeFileSync(filePath, updatedText, "utf8");
+            vscode.window.showInformationMessage("💾 Feature file saved.");
+        }
+        catch (err) {
+            vscode.window.showErrorMessage("❌ Failed to save feature file: " + err.message);
+        }
+    });
+    const saveVersionFolderCmd = vscode.commands.registerCommand("extension.saveVersionFolder", async () => {
+        try {
+            const workspace = vscode.workspace.workspaceFolders?.[0];
+            if (!workspace)
+                return;
+            const workspacePath = workspace.uri.fsPath;
+            const bddDir = path.join(workspacePath, "bdd_tests");
+            const versionsDir = path.join(workspacePath, "Versions");
+            if (!fs.existsSync(versionsDir))
+                fs.mkdirSync(versionsDir);
+            // Create timestamped folder
+            const timestamp = getFormattedTimestamp();
+            const versionFolder = path.join(versionsDir, `version_${timestamp}`);
+            fs.mkdirSync(versionFolder);
+            // Copy all feature files
+            const featureFiles = fs
+                .readdirSync(bddDir)
+                .filter(f => f.endsWith(".feature"));
+            featureFiles.forEach(file => {
+                const src = path.join(bddDir, file);
+                const dest = path.join(versionFolder, file);
+                fs.copyFileSync(src, dest);
+            });
+            vscode.window.showInformationMessage(`📦 Version saved: ${path.basename(versionFolder)}`);
+        }
+        catch (err) {
+            vscode.window.showErrorMessage("❌ Failed to save version: " + err.message);
+        }
+    });
     // 🧩 Command to generate tests
     const generateCmd = vscode.commands.registerCommand("extension.generateBDD", async () => {
         const workspace = vscode.workspace.workspaceFolders?.[0];
@@ -82,7 +130,8 @@ function activate(context) {
         const stat = fs.statSync(fullPath);
         if (stat.isFile() && fullPath.endsWith(".feature")) {
             const text = fs.readFileSync(fullPath, "utf-8");
-            panel_1.BDDPanel.show(text);
+            const panel = panel_1.BDDPanel.show(text);
+            panel.setFilePath(fullPath); // <-- Add this line
         }
         else if (stat.isDirectory()) {
             const features = getFeatureFiles(fullPath);
@@ -92,7 +141,9 @@ function activate(context) {
     });
     // 🧹 Register refresh command
     vscode.commands.registerCommand("featureExplorer.refresh", () => provider.refresh());
-    context.subscriptions.push(generateCmd, treeView);
+    // context.subscriptions.push(generateCmd, treeView);
+    context.subscriptions.push(generateCmd, saveFileCmd, saveVersionFolderCmd, // <-- REQUIRED
+    treeView);
 }
 /** 🔍 Recursively collect all .feature files */
 function getFeatureFiles(dir) {
