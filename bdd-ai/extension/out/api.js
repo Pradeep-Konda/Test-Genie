@@ -69,26 +69,31 @@ async function getPythonPath() {
 /**
  * Run the Python backend with specified phase ("generate" or "execute")
  */
-async function runPython(phase, inputPath, updatedFeatureText) {
+async function runPython(phase, inputPath, updatedFeatureText, analysis) {
     const pythonPath = await getPythonPath();
-    // ✅ Use absolute path from installed extension root
+    // Use absolute path from installed extension root
     const extension = vscode.extensions.getExtension("TestGenie.vscode-bdd-ai");
     const extensionPath = extension?.extensionPath || __dirname;
     const scriptPath = path.join(extensionPath, "agents", "main.py");
     const openaiApiKey = process.env.OPENAI_API_KEY ||
         vscode.workspace.getConfiguration("bddai").get("openaiApiKey") ||
         "";
-    // 🔍 Debug info (helpful in Developer Tools console)
+    // Debug info
     console.log("🐍 Python Path:", pythonPath);
     console.log("📄 Script Path:", scriptPath);
     console.log("📦 Exists:", fs.existsSync(scriptPath));
     console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
-    //const featureArg = updatedFeatureText ? Buffer.from(updatedFeatureText, "utf-8").toString("base64") : "";
     return new Promise((resolve, reject) => {
-        const args = updatedFeatureText
-            ? [scriptPath, phase, inputPath, updatedFeatureText]
-            : [scriptPath, phase, inputPath];
-        const python = (0, child_process_1.spawn)(pythonPath, args, {
+        // ✅ Build args safely (no undefined allowed)
+        const args = [scriptPath, phase, inputPath];
+        if (updatedFeatureText)
+            args.push(updatedFeatureText);
+        if (analysis)
+            args.push(analysis);
+        console.log("⚙️ Running with args:", args);
+        // Final safeguard (filters out accidental undefined/null)
+        const safeArgs = args.filter((a) => typeof a === "string");
+        const python = (0, child_process_1.spawn)(pythonPath, safeArgs, {
             cwd: path.dirname(scriptPath),
             env: {
                 ...process.env,
@@ -168,7 +173,7 @@ function saveUpdatedFeatureFile(workspacePath, featureText) {
 /**
  * Executes BDD tests from workspace (after ensuring updated file is written)
  */
-async function executeTests(workspacePath, updatedFeatureText) {
-    return runPython("execute", workspacePath, updatedFeatureText);
+async function executeTests(workspacePath, updatedFeatureText, analysis) {
+    return runPython("execute", workspacePath, updatedFeatureText, analysis);
 }
 //# sourceMappingURL=api.js.map

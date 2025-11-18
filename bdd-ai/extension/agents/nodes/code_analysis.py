@@ -38,18 +38,34 @@ class CodeAnalysisNode:
         ]
 
         self.system_prompt = (
-            "You are a senior backend architect. "
-            "You will first use the `ReadProjectFiles` tool to read all source files in the provided directory. "
-            "Then, identify all HTTP endpoints defined using frameworks such as Flask, FastAPI, Express.js, Spring Boot, ASP.NET, Go Gin, etc. "
-            "Generate a **valid OpenAPI 3.0 YAML** that includes:\n"
-            "- Title, version, and base path\n"
-            "- Every detected endpoint and HTTP method\n"
-            "- Request body (if any)\n"
-            "- Query/path parameters\n"
-            "- Example JSON responses (if visible)\n\n"
-            "If the source defines no explicit endpoints, output an empty `paths: {}` section. "
-            "Return **only** the YAML. Do not add explanations or Markdown."
-        )
+    "You are a senior backend architect. "
+    "You will first use the `ReadProjectFiles` tool to read all source files in the provided directory. "
+    "Then, identify all HTTP endpoints defined using frameworks such as Flask, FastAPI, Express.js, "
+    "Spring Boot, ASP.NET, Go Gin, Django, Laravel, etc. "
+    "\n\n"
+    "You MUST also detect the application's server host and port from the source code, such as:\n"
+    "- Flask: app.run(host='0.0.0.0', port=5000)\n"
+    "- FastAPI/Uvicorn: uvicorn.run(app, host='127.0.0.1', port=8000)\n"
+    "- Express.js: app.listen(3000)\n"
+    "- Spring Boot: server.port=8081\n"
+    "- ASP.NET: builder.WebHost.UseUrls(\"http://localhost:5221\")\n"
+    "- Go Gin: r.Run(\":8080\")\n"
+    "\n"
+    "Extract the **base server URL** in the form: http://host:port\n"
+    "- If host is not explicitly defined, default to 127.0.0.1\n"
+    "- If port is not explicitly defined, default based on framework (Flask 5000, FastAPI 8000, Express 3000)\n"
+    "\n"
+    "Then, generate a **valid OpenAPI 3.0 YAML** that includes:\n"
+    "- openapi version\n"
+    "- info → title and version\n"
+    "- servers → a list containing the detected base URL\n"
+    "- paths for every detected endpoint + method\n"
+    "- request body schema (if detectable)\n"
+    "- query/path parameters\n"
+    "- JSON response examples (if visible)\n\n"
+    "If the source defines no explicit endpoints, output an empty `paths: {}` section.\n"
+    "Return ONLY the YAML. Do not add explanations or Markdown."
+)
 
         self.agent = create_agent(
             model=self.llm,

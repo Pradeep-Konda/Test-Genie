@@ -40,10 +40,15 @@ async function getPythonPath(): Promise<string> {
 /**
  * Run the Python backend with specified phase ("generate" or "execute")
  */
-async function runPython(phase: string, inputPath: string, updatedFeatureText?: string): Promise<BDDResult> {
+async function runPython(
+  phase: string,
+  inputPath: string,
+  updatedFeatureText?: string,
+  analysis?: string
+): Promise<BDDResult> {
   const pythonPath = await getPythonPath();
 
-  // ✅ Use absolute path from installed extension root
+  // Use absolute path from installed extension root
   const extension = vscode.extensions.getExtension("TestGenie.vscode-bdd-ai");
   const extensionPath = extension?.extensionPath || __dirname;
   const scriptPath = path.join(extensionPath, "agents", "main.py");
@@ -53,19 +58,25 @@ async function runPython(phase: string, inputPath: string, updatedFeatureText?: 
     (vscode.workspace.getConfiguration("bddai").get("openaiApiKey") as string) ||
     "";
 
-  // 🔍 Debug info (helpful in Developer Tools console)
+  // Debug info
   console.log("🐍 Python Path:", pythonPath);
   console.log("📄 Script Path:", scriptPath);
   console.log("📦 Exists:", fs.existsSync(scriptPath));
   console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
 
-  //const featureArg = updatedFeatureText ? Buffer.from(updatedFeatureText, "utf-8").toString("base64") : "";
-
   return new Promise((resolve, reject) => {
-    const args = updatedFeatureText
-      ? [scriptPath, phase, inputPath, updatedFeatureText]
-      : [scriptPath, phase, inputPath];
-    const python = spawn(pythonPath, args, {
+    // ✅ Build args safely (no undefined allowed)
+    const args: string[] = [scriptPath, phase, inputPath];
+
+    if (updatedFeatureText) args.push(updatedFeatureText);
+    if (analysis) args.push(analysis);
+
+    console.log("⚙️ Running with args:", args);
+
+    // Final safeguard (filters out accidental undefined/null)
+    const safeArgs = args.filter((a): a is string => typeof a === "string");
+
+    const python = spawn(pythonPath, safeArgs, {
       cwd: path.dirname(scriptPath),
       env: {
         ...process.env,
@@ -153,7 +164,10 @@ export function saveUpdatedFeatureFile(workspacePath: string, featureText: strin
 /**
  * Executes BDD tests from workspace (after ensuring updated file is written)
  */
-export async function executeTests(workspacePath: string, updatedFeatureText?: string) {
-
-  return runPython("execute", workspacePath, updatedFeatureText);
+export async function executeTests(
+  workspacePath: string,
+  updatedFeatureText?: string,
+  analysis?: string
+) {
+  return runPython("execute", workspacePath, updatedFeatureText, analysis);
 }

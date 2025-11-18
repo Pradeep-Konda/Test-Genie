@@ -104,7 +104,7 @@ function activate(context) {
                 panel.onDidClickRun(async () => {
                     const updated = panel.getFeatureText();
                     vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "🏃 Running Tests..." }, async () => {
-                        const exec = await (0, api_1.executeTests)(workspacePath, updated);
+                        const exec = await (0, api_1.executeTests)(workspacePath, updated, result.analysis || "No Specifications file");
                         vscode.window.showInformationMessage("✅ Test Execution Complete!");
                         panel.showOutput(exec.execution_output || "No output");
                     });
