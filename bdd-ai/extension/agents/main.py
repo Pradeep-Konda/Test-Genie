@@ -58,6 +58,7 @@ if __name__ == "__main__":
             }))
         elif phase == "execute":
             state.feature_text = sys.argv[3]
+            state.analysis = sys.argv[4]
             final_state = run_execution_phase(state)
             print(json.dumps({
                 "execution_output": final_state.execution_output

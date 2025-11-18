@@ -97,7 +97,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.withProgress(
               { location: vscode.ProgressLocation.Notification, title: "🏃 Running Tests..." },
               async () => {
-                const exec = await executeTests(workspacePath, updated);
+                const exec = await executeTests(workspacePath, updated, result.analysis || "No Specifications file");
                 vscode.window.showInformationMessage("✅ Test Execution Complete!");
                 panel.showOutput(exec.execution_output || "No output");
               }
