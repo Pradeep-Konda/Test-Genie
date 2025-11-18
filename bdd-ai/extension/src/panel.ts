@@ -183,12 +183,25 @@ export class BDDPanel {
           .fail {
             color: var(--vscode-testing-iconFailed, #f14c4c);
             font-weight: bold;
+          } 
 
           .button-row {
-            display: flex;
-            gap: 10px;
-            margin-top: 12px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-top: 12px;
           }
+
+          .left-buttons {
+              display: flex;
+              gap: 10px;
+          }
+
+          .right-buttons {
+              display: flex;
+              gap: 10px;
+          }
+
 
           }
         </style>
@@ -197,10 +210,16 @@ export class BDDPanel {
         <h2>Generated Test Cases</h2>
         <pre id="featureText" contenteditable="true">${escaped}</pre>
         <div class="button-row">
-            <button id="runTests">▶ Run Tests</button>
-            <button id="saveFeature">💾 Save</button>
-            <button id="saveVersion">📦 Save Version</button>
+          <div class="left-buttons">
+              <button id="runTests">▶ Run Tests</button>
+          </div>
+
+          <div class="right-buttons">
+              <button id="saveFeature">💾 Save</button>
+              <button id="saveVersion">📦 Save Version</button>
+          </div>
         </div>
+
         <div id="output"></div>
 
         <script>

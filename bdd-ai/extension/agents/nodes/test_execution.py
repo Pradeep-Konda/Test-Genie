@@ -197,10 +197,13 @@ class TestExecutionNode:
 
             html.append("</body></html>")
 
-            with open(html_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(html))
+            full_html = "\n".join(html)
 
-            return json.dumps({"html_report": html})
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(full_html)
+
+            return json.dumps({"execution_output": full_html})
+
         except Exception as e:
             return json.dumps({"error": str(e)})
         
@@ -333,7 +336,7 @@ class TestExecutionNode:
             # ✅ Generate one combined HTML report for all batches
             report_input = json.dumps({"results": all_results, "curl_commands": all_curls})
             report_json = self._generate_html_report(state, report_input)
-            report_html = json.loads(report_json).get("html_report")
+            report_html = json.loads(report_json).get("execution_output")
 
            
             state.execution_output = report_html
