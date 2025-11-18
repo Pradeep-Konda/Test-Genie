@@ -7,6 +7,7 @@ from typing import Optional
 import json
 import sys
 import os
+<<<<<<< HEAD
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 # optional: set locale too
 if sys.platform.startswith("win"):
@@ -15,6 +16,8 @@ if sys.platform.startswith("win"):
         locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
     except Exception:
         pass
+=======
+>>>>>>> 5584fb332170103297e85fed66bf89df9532d33d
 
 
 @dataclass
@@ -66,6 +69,10 @@ if __name__ == "__main__":
             }))
         elif phase == "execute":
             state.feature_text = sys.argv[3]
+<<<<<<< HEAD
+=======
+            state.analysis = sys.argv[4]
+>>>>>>> 5584fb332170103297e85fed66bf89df9532d33d
             final_state = run_execution_phase(state)
             print(json.dumps({
                 "execution_output": final_state.execution_output

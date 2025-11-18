@@ -1,70 +1,201 @@
-import os
-from datetime import datetime
+from openai import OpenAI
 from dotenv import load_dotenv
+from datetime import datetime
+import os
+import glob
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.agents import create_agent
+from pathspec import PathSpec
 from langchain_openai import ChatOpenAI
-from langchain_core.tools import Tool
-from langchain_core.messages import SystemMessage, HumanMessage
-
 
 class CodeAnalysisNode:
-    """Analyzes all source code files in a project and produces a valid OpenAPI spec."""
-
     def __init__(self):
         load_dotenv()
-        self.llm = ChatOpenAI(model="gpt-4.1", temperature=0)
 
-        def read_project_code(directory: str) -> str:
-            combined_code = ""
-            supported_exts = (".py", ".js", ".ts", ".java", ".go", ".cs")
-
-            for root, _, files in os.walk(directory):
-                for f in files:
-                    if f.endswith(supported_exts):
-                        file_path = os.path.join(root, f)
-                        try:
-                            with open(file_path, "r", encoding="utf-8") as file:
-                                combined_code += f"\n\n# File: {file_path}\n{file.read()}"
-                        except Exception:
-                            continue
-            return combined_code or "No readable code files found."
-
-        self.tools = [
-            Tool(
-                name="ReadProjectFiles",
-                func=read_project_code,
-                description="Recursively read all source code files from a project directory."
-            )
-        ]
-
-        self.system_prompt = (
-            "You are a senior backend architect. "
-            "You will first use the `ReadProjectFiles` tool to read all source files in the provided directory. "
-            "Then, identify all HTTP endpoints defined using frameworks such as Flask, FastAPI, Express.js, Spring Boot, ASP.NET, Go Gin, etc. "
-            "Generate a **valid OpenAPI 3.0 YAML** that includes:\n"
-            "- Title, version, and base path\n"
-            "- Every detected endpoint and HTTP method\n"
-            "- Request body (if any)\n"
-            "- Query/path parameters\n"
-            "- Example JSON responses (if visible)\n\n"
-            "If the source defines no explicit endpoints, output an empty `paths: {}` section. "
-            "Return **only** the YAML. Do not add explanations or Markdown."
+        self.llm = ChatOpenAI(
+            model="gpt-4.1",
+            temperature=0,
         )
 
-        self.agent = create_agent(
+    def read_all_files(self, project_path: str, chunk_size: int = 15000):
+        """
+        Reads project files recursively, honoring .gitignore rules.
+        Splits files into safe chunks for LLM consumption.
+        Returns: list of {file, chunk}
+        """
+
+        # Load .gitignore patterns
+        gitignore_path = os.path.join(project_path, ".gitignore")
+        ignore_spec = None
+
+        if os.path.exists(gitignore_path):
+            with open(gitignore_path, "r", encoding="utf-8") as gi:
+                ignore_spec = PathSpec.from_lines("gitwildmatch", gi.readlines())
+
+        supported_exts = (
+        ".py", ".js", ".ts", ".java", ".go", ".cs",
+        ".json", ".yaml", ".yml", ".xml",
+        ".env", ".ini", ".cfg", ".properties",
+        ".md", ".txt",
+        ".sh", ".ps1"
+    )
+
+        output_chunks = []
+
+        for root, _, files in os.walk(project_path):
+            for f in files:
+                file_path = os.path.join(root, f)
+                rel_path = os.path.relpath(file_path, project_path)
+
+                # Skip gitignored files
+                if ignore_spec and ignore_spec.match_file(rel_path):
+                    continue
+
+                # Skip unsupported file types
+                if not f.endswith(supported_exts):
+                    continue
+
+                try:
+                    with open(file_path, "r", encoding="utf-8") as file:
+                        content = file.read()
+
+                    # Chunk the file content
+                    for i in range(0, len(content), chunk_size):
+                        output_chunks.append({
+                            "file": file_path,
+                            "chunk": content[i:i + chunk_size]
+                        })
+                        #print(f"Read chunk: {file_path} ({i}–{i + chunk_size})")
+
+                except Exception as e:
+                    print(f"Could not read file {file_path}: {e}")
+                    continue
+
+        return output_chunks
+
+    def build_chunk_agent(self):
+        """
+        Agent used for processing single chunks of code.
+        """
+        self.system_prompt =(
+                "You are an expert code analysis agent. "
+                "You extract ONLY API-related information: endpoints, HTTP methods, URL patterns. "
+                "You MUST also detect the application's server/base url host and port from the chunks of code, such as the below lines of codes use them just for refernce dont use them as server/host url:\n"
+                "- Flask: app.run(host='0.0.0.0', port=5000)\n"
+                "- FastAPI/Uvicorn: uvicorn.run(app, host='127.0.0.1', port=8000)\n"
+                "- Express.js: app.listen(3000)\n"
+                "- Spring Boot: server.port=8081\n"
+                "- ASP.NET: builder.WebHost.UseUrls(\"http://localhost:5221\")\n"
+                "- Go Gin: r.Run(\":8080\")\n"
+                "\n"
+            )
+
+        return create_agent(
             model=self.llm,
-            tools=self.tools,
+            tools=[],
             system_prompt=self.system_prompt
         )
 
-    def _mock_analyzer(self, _: str) -> str:
-        return """openapi: 3.0.0
-                info:
-                title: Auto Generated API
-                version: 1.0.0
-                paths: {}
-                """
+    def build_final_agent(self):
+        """
+        Agent to merge all chunk results into a final OpenAPI spec.
+        """
+        self.system_prompt = (
+                "You are an OpenAPI generator. "
+                "Combine all extracted API details into a single well-structured OpenAPI 3.0 Yaml. "
+                "Then, generate a **valid OpenAPI 3.0 YAML** that includes:\n"
+                "- openapi version\n"
+                "- info → title and version\n"
+                "- servers → a list containing the detected base URL\n"
+                "- paths for every detected endpoint + method\n"
+                "- request body schema (if detectable)\n"
+                "- query/path parameters\n"
+                "- JSON response examples (if visible)\n\n"
+                "If the source defines no explicit endpoints, output an empty `paths: {}` section.\n"
+                "Return ONLY the YAML. Do not add explanations or Markdown such as ```yaml."
+            )
 
+        return create_agent(
+            model=self.llm,
+            tools=[],
+            system_prompt=self.system_prompt,
+        )
+
+    def analyze_chunks(self, chunks):
+        """
+        Process each chunk with the chunk-agent.
+        """
+        agent = self.build_chunk_agent()
+        results = []
+
+        for idx, item in enumerate(chunks):
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(
+                    content=f"Analyze chunk {idx + 1}/{len(chunks)} from file: {item['file']}.\n"
+                    "Extract only API-related information.\n\n"
+                    f"```\n{item['chunk']}\n```"
+                )
+            ]
+
+            result = agent.invoke({"messages": messages})
+            #print(result, "result of chunk analysis")
+
+            api_text = ""
+            if isinstance(result, dict) and "messages" in result:
+                ai_msgs = [
+                    m for m in result["messages"]
+                    if getattr(m, "type", None) == "ai" or m.__class__.__name__ == "AIMessage"
+                ]
+                api_text = ai_msgs[-1].content if ai_msgs else ""
+            elif hasattr(result, "content"):
+                api_text = result.content
+            elif isinstance(result, str):
+                api_text = result
+            else:
+                api_text = str(result or "")
+            
+            #print(api_text, "api_text extracted")
+
+            results.append(api_text)
+
+        return results
+
+    def combine_results(self, chunk_results):
+        """
+        Combine chunk-level results into one OpenAPI doc.
+        """
+        agent = self.build_final_agent()
+
+        combined_text = "\n\n".join(chunk_results)
+
+        messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(
+                content=f"Combine all extracted API information into final OpenAPI 3.0 version specification Yaml:\n\n{combined_text}"
+            )
+        ]
+
+        result = agent.invoke({"messages": messages})
+
+        yaml_text = ""
+        if isinstance(result, dict) and "messages" in result:
+                ai_msgs = [
+                    m for m in result["messages"]
+                    if getattr(m, "type", None) == "ai" or m.__class__.__name__ == "AIMessage"
+                ]
+                yaml_text = ai_msgs[-1].content if ai_msgs else ""
+        elif hasattr(result, "content"):
+                yaml_text = result.content
+        elif isinstance(result, str):
+                yaml_text = result
+        else:
+                yaml_text = str(result or "")
+        
+        #print(yaml_text, "final OpenAPI yaml")
+
+        return yaml_text
+    
     def save_openapi_file(self, project_path: str, yaml_content: str) -> str:
         """Save generated OpenAPI YAML inside the same project folder."""
         output_dir = os.path.join(project_path, "output")
@@ -75,44 +206,28 @@ class CodeAnalysisNode:
         file_path = os.path.join(output_dir, filename)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(yaml_content)
-        return file_path
+        
+    
 
-    def __call__(self, state):
-        if not getattr(state, "project_path", None):
-            state.analysis = self._mock_analyzer("")
-            return state
+    def __call__(self, data):
+        source_path = data.project_path
 
-        try:
-            messages = [
-                SystemMessage(content=self.system_prompt),
-                HumanMessage(content=f"Use the ReadProjectFiles tool on this directory: {state.project_path}")
-            ]
+        # Step 1: read all files & chunk
+        chunks = self.read_all_files(source_path)
+        #print(chunks, "read chunks")
 
-            result = self.agent.invoke({"messages": messages})
+        # Step 2: analyze each chunk
+        chunk_results = self.analyze_chunks(chunks)
 
-            yaml_text = ""
-            if isinstance(result, dict) and "messages" in result:
-                ai_msgs = [
-                    m for m in result["messages"]
-                    if getattr(m, "type", None) == "ai" or m.__class__.__name__ == "AIMessage"
-                ]
-                yaml_text = ai_msgs[-1].content if ai_msgs else ""
-            elif hasattr(result, "content"):
-                yaml_text = result.content
-            elif isinstance(result, str):
-                yaml_text = result
-            else:
-                yaml_text = str(result or "")
+        #print(chunk_results)
 
-            yaml_text = yaml_text.strip()
-        except Exception as e:
-            print(f"⚠️ LLM Error: {e}")
-            yaml_text = self._mock_analyzer("")
+        # Step 3: combine all into final OpenAPI
+        final_openapi = self.combine_results(chunk_results)
 
-        # ✅ Save file inside the same project path
-        saved_path = self.save_openapi_file(state.project_path, yaml_text)
-        #print(f"✅ OpenAPI spec saved at: {saved_path}")
+        #print(final_openapi, "final OpenAPI spec")
 
-        state.analysis = yaml_text
-        return state
+        self.save_openapi_file(source_path, final_openapi)
 
+        data.analysis = final_openapi
+
+        return data

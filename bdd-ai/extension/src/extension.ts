@@ -5,8 +5,80 @@ import { generateTests, executeTests } from "./api";
 import { BDDPanel } from "./panel";
 
 export function activate(context: vscode.ExtensionContext) {
+
+  function getFormattedTimestamp() {
+  const now = new Date();
+
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+
+  return `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
+}
+
+
+  const saveFileCmd = vscode.commands.registerCommand(
+    "extension.saveThisFeature",
+    async (filePath: string, updatedText: string) => {
+      try {
+        fs.writeFileSync(filePath, updatedText, "utf8");
+        vscode.window.showInformationMessage("💾 Feature file saved.");
+      } catch (err: any) {
+        vscode.window.showErrorMessage("❌ Failed to save feature file: " + err.message);
+      }
+    }
+  );
+
+  const saveVersionFolderCmd = vscode.commands.registerCommand(
+  "extension.saveVersionFolder",
+  async () => {
+    try {
+      const workspace = vscode.workspace.workspaceFolders?.[0];
+      if (!workspace) return;
+
+      const workspacePath = workspace.uri.fsPath;
+      const bddDir = path.join(workspacePath, "bdd_tests");
+      const versionsDir = path.join(workspacePath, "Versions");
+
+      if (!fs.existsSync(versionsDir))
+        fs.mkdirSync(versionsDir);
+
+      // Create timestamped folder
+      const timestamp = getFormattedTimestamp();
+
+      const versionFolder = path.join(versionsDir, `version_${timestamp}`);
+      fs.mkdirSync(versionFolder);
+
+      // Copy all feature files
+      const featureFiles = fs
+        .readdirSync(bddDir)
+        .filter(f => f.endsWith(".feature"));
+
+      featureFiles.forEach(file => {
+        const src = path.join(bddDir, file);
+        const dest = path.join(versionFolder, file);
+        fs.copyFileSync(src, dest);
+      });
+
+      vscode.window.showInformationMessage(
+        `📦 Version saved: ${path.basename(versionFolder)}`
+      );
+
+    } catch (err: any) {
+      vscode.window.showErrorMessage("❌ Failed to save version: " + err.message);
+    }
+  }
+);
+
+
+
   // 🧩 Command to generate tests
   const generateCmd = vscode.commands.registerCommand("extension.generateBDD", async () => {
+    
     const workspace = vscode.workspace.workspaceFolders?.[0];
     if (!workspace) {
       vscode.window.showErrorMessage("❌ No workspace folder open!");
@@ -25,7 +97,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.withProgress(
               { location: vscode.ProgressLocation.Notification, title: "🏃 Running Tests..." },
               async () => {
-                const exec = await executeTests(workspacePath, updated);
+                const exec = await executeTests(workspacePath, updated, result.analysis || "No Specifications file");
                 vscode.window.showInformationMessage("✅ Test Execution Complete!");
                 panel.showOutput(exec.execution_output || "No output");
               }
@@ -54,8 +126,9 @@ export function activate(context: vscode.ExtensionContext) {
     const stat = fs.statSync(fullPath);
     if (stat.isFile() && fullPath.endsWith(".feature")) {
       const text = fs.readFileSync(fullPath, "utf-8");
-      BDDPanel.show(text);
-    } else if (stat.isDirectory()) {
+      const panel = BDDPanel.show(text);
+    panel.setFilePath(fullPath); // <-- Add this line
+   } else if (stat.isDirectory()) {
       const features = getFeatureFiles(fullPath);
       const combined = features.map((f) => fs.readFileSync(f, "utf-8")).join("\n\n");
       BDDPanel.show(combined || "📁 No .feature files found.");
@@ -65,7 +138,15 @@ export function activate(context: vscode.ExtensionContext) {
   // 🧹 Register refresh command
   vscode.commands.registerCommand("featureExplorer.refresh", () => provider.refresh());
 
-  context.subscriptions.push(generateCmd, treeView);
+  // context.subscriptions.push(generateCmd, treeView);
+
+  context.subscriptions.push(
+  generateCmd,
+  saveFileCmd,
+  saveVersionFolderCmd,   // <-- REQUIRED
+  treeView
+);
+
 }
 
 /** 🔍 Recursively collect all .feature files */

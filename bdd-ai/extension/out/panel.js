@@ -36,7 +36,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BDDPanel = void 0;
 const vscode = __importStar(require("vscode"));
 class BDDPanel {
+    setFilePath(filePath) {
+        this.currentFilePath = filePath;
+    }
     constructor(panel, featureText) {
+        this.currentFilePath = null;
         this.featureText = "";
         this.panel = panel;
         this.featureText = featureText;
@@ -51,6 +55,17 @@ class BDDPanel {
                     if (this._onRunClicked)
                         this._onRunClicked(this.featureText);
                     break;
+                case "save":
+                    if (this.currentFilePath) {
+                        vscode.commands.executeCommand("extension.saveThisFeature", this.currentFilePath, this.featureText);
+                    }
+                    else {
+                        vscode.window.showErrorMessage("❌ Cannot save: No file path detected.");
+                    }
+                    break;
+                case "saveVersion":
+                    vscode.commands.executeCommand("extension.saveVersionFolder");
+                    break;
             }
         }, undefined, []);
         this.panel.onDidDispose(() => this.dispose());
@@ -61,137 +76,163 @@ class BDDPanel {
             BDDPanel.currentPanel.update(featureText);
             return BDDPanel.currentPanel;
         }
-        const panel = vscode.window.createWebviewPanel("bddPreview", "AI-Generated BDD Tests", vscode.ViewColumn.One, { enableScripts: true });
+        const panel = vscode.window.createWebviewPanel("bddPreview", "AI-Generated BDD Tests", vscode.ViewColumn.One, {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+        });
         const newPanel = new BDDPanel(panel, featureText);
         BDDPanel.currentPanel = newPanel;
         return newPanel;
     }
-    /**
-     * Register callback when Run button is clicked
-     */
     onDidClickRun(callback) {
         this._onRunClicked = callback;
     }
-    /**
-     * Get latest feature text (after user edits)
-     */
     getFeatureText() {
         return this.featureText;
     }
-    /**
-     * Show test execution output
-     */
     showOutput(output) {
         this.panel.webview.postMessage({ type: "output", output });
     }
-    /**
-     * Update webview content (on new test generation)
-     */
     update(featureText) {
         this.featureText = featureText;
         this.panel.webview.html = this.getHtml(featureText);
     }
-    /**
-     * Clean up
-     */
     dispose() {
         BDDPanel.currentPanel = undefined;
         this.panel.dispose();
     }
-    /**
-     * Generate HTML content for the panel
-     */
     getHtml(featureText) {
-        const escaped = featureText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        return `
+        const escaped = featureText
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/(Feature:|Scenario:|Given |When |Then |And )/g, `<span class="keyword">$1</span>`);
+        return /* html */ `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AI-Generated BDD Tests</title>
         <style>
+          :root {
+            color-scheme: light dark;
+          }
+
           body {
-            font-family: sans-serif;
-            padding: 10px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: var(--vscode-editor-font-size);
+            color: var(--vscode-editor-foreground);
+            background-color: var(--vscode-editor-background);
+            padding: 16px;
+            white-space: pre-wrap;
+            overflow-y: auto;
           }
+
           h2 {
-            margin-bottom: 8px;
+            color: var(--vscode-editor-foreground);
+            border-bottom: 1px solid var(--vscode-editorWidget-border);
+            padding-bottom: 6px;
+            margin-bottom: 12px;
           }
-          textarea {
-            width: 100%;
+
+          pre {
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-editorWidget-border);
+            border-radius: 6px;
+            padding: 12px;
+            color: var(--vscode-editor-foreground);
+            font-family: var(--vscode-editor-font-family);
+            font-size: var(--vscode-editor-font-size);
             height: 60vh;
-            font-family: monospace;
-            font-size: 14px;
-            padding: 8px;
+            overflow-y: auto;
+            outline: none;
           }
+
+          .keyword {
+            color: var(--vscode-editor-keywordForeground, #c586c0);
+            font-weight: bold;
+          }
+
           button {
-            margin-top: 10px;
-            background-color: #007acc;
-            color: white;
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
             border: none;
             padding: 8px 16px;
-            border-radius: 5px;
+            border-radius: 6px;
             cursor: pointer;
+            margin-top: 12px;
           }
+
           button:hover {
-            background-color: #005fa3;
+            background-color: var(--vscode-button-hoverBackground);
           }
+
           #output {
-          margin-top: 15px;
-          background: #f3f3f3;
-          padding: 10px;
-          border-radius: 6px;
-          height: 30vh;
-          overflow-y: auto;
-          white-space: normal;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
+            margin-top: 15px;
+            background: var(--vscode-editorWidget-background);
+            color: var(--vscode-editor-foreground);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--vscode-editorWidget-border);
+            height: 30vh;
+            overflow-y: auto;
           }
-          th, td {
-            border: 1px solid #ccc;
-            padding: 8px;
-            text-align: left;
-          }
-          th {
-            background: #f2f2f2;
-          }
+
           .pass {
-            color: green;
+            color: var(--vscode-testing-iconPassed, #4caf50);
             font-weight: bold;
           }
           .fail {
-            color: red;
+            color: var(--vscode-testing-iconFailed, #f14c4c);
             font-weight: bold;
+
+          .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+          }
+
           }
         </style>
       </head>
       <body>
         <h2>Generated Test Cases</h2>
-        <textarea id="featureText">${escaped}</textarea>
-        <br/>
-        <button id="runTests">▶ Run Tests</button>
-        <button id="refreshTests" disabled>⟳ Refresh Tests (after editing)</button>
+        <pre id="featureText" contenteditable="true">${escaped}</pre>
+        <div class="button-row">
+            <button id="runTests">▶ Run Tests</button>
+            <button id="saveFeature">💾 Save</button>
+            <button id="saveVersion">📦 Save Version</button>
+        </div>
         <div id="output"></div>
 
         <script>
           const vscode = acquireVsCodeApi();
-          const area = document.getElementById('featureText');
-          const output = document.getElementById('output');
+          const featureTextEl = document.getElementById('featureText');
+          const outputEl = document.getElementById('output');
 
-          area.addEventListener('input', () => {
-            vscode.postMessage({ type: 'updateText', text: area.value });
+          featureTextEl.addEventListener('input', () => {
+            vscode.postMessage({ type: 'updateText', text: featureTextEl.innerText });
           });
 
           document.getElementById('runTests').addEventListener('click', () => {
             vscode.postMessage({ type: 'run' });
           });
 
+          document.getElementById('saveFeature').addEventListener('click', () => {
+            vscode.postMessage({ type: 'save' });
+          });
+
+          document.getElementById('saveVersion').addEventListener('click', () => {
+            vscode.postMessage({ type: 'saveVersion' });
+          });
+
+
+
           window.addEventListener('message', (event) => {
             const message = event.data;
             if (message.type === 'output') {
-              output.innerHTML  = message.output;
-              output.scrollTop = output.scrollHeight; // auto-scroll
+              outputEl.innerHTML = message.output;
+              outputEl.scrollTop = outputEl.scrollHeight;
             }
           });
         </script>
