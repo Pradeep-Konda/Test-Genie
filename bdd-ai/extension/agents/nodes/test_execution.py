@@ -278,11 +278,12 @@ class TestExecutionNode:
 
         html.append("</body></html>")
 
+        full_html = "\n".join(html)
+
         with open(html_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(html))
+            f.write(full_html)
 
-        return json.dumps({"html_report": html})
-
+        return json.dumps({"execution_output": full_html})
     # ------------------------------------------------------------------
     # CORE EXECUTION
     # ------------------------------------------------------------------
@@ -353,7 +354,7 @@ class TestExecutionNode:
             })
 
             report_json = self._generate_html_report(state, final_input)
-            state.execution_output = json.loads(report_json).get("html_report")
+            state.execution_output = json.loads(report_json).get("execution_output")
 
         except Exception as e:
             state.execution_output = {
