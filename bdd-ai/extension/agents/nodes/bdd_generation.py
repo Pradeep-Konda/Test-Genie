@@ -1,24 +1,12 @@
 import os
 import re
-import sys
 from datetime import datetime
 from dotenv import load_dotenv
+from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import Tool
+from langchain_core.messages import SystemMessage, HumanMessage
 
-# Optional LLM/agent imports - extension may provide these; safe if unavailable
-try:
-    from langchain.agents import create_agent
-    from langchain_openai import ChatOpenAI
-    from langchain_core.tools import Tool
-    from langchain_core.messages import SystemMessage, HumanMessage
-except Exception:
-    create_agent = None
-    ChatOpenAI = None
-    Tool = None
-    SystemMessage = None
-    HumanMessage = None
-
-# Debug: print module path to confirm which file is loaded at runtime
-print(f"[BDDGenerationNode] loaded from: {__file__}", file=sys.stderr)
 
 
 class BDDGenerationNode:
@@ -99,10 +87,10 @@ class BDDGenerationNode:
                         else None
                         )
             except Exception as e:
-                        print(f"[BDDGenerationNode] Agent init failed: {e}", file=sys.stderr)
+                       
                         self.agent = None
         except Exception as e:
-            print(f"[BDDGenerationNode] LLM init failed: {e}", file=sys.stderr)
+        
             self.llm = None
             self.agent = None
 
@@ -396,64 +384,34 @@ class BDDGenerationNode:
         feature_text = None
 
         # ------------------ Call LLM agent ------------------
-        if self.agent:
-            try:
-                print(
-                    f"[BDDGenerationNode] Invoking agent with OpenAPI length={len(openapi_spec)}",
-                    file=sys.stderr,
+        try:
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(
+                    content=f"Generate advanced BDD test cases (in Gherkin) for this OpenAPI 3.0 spec:\n\n{openapi_spec}"
                 )
-
-                messages = [
-                    SystemMessage(content=self.system_prompt),
-                    HumanMessage(
-                        content=f"Convert this OpenAPI spec into Gherkin tests.\n\n{openapi_spec}"
-                    ),
+            ]
+ 
+            result = self.agent.invoke({"messages": messages})
+ 
+            # 🧠 Normalize outputs like CodeAnalysisNode
+            if isinstance(result, dict) and "messages" in result:
+                ai_messages = [
+                    msg for msg in result["messages"]
+                    if getattr(msg, "type", None) == "ai" or msg.__class__.__name__ == "AIMessage"
                 ]
+                feature_text = ai_messages[-1].content.strip() if ai_messages else ""
+            elif hasattr(result, "content"):
+                feature_text = result.content.strip()
+            elif isinstance(result, str):
+                feature_text = result.strip()
+            else:
+                feature_text = str(result or "").strip()
+ 
+        except Exception as e:
+            print(f"⚠️ LLM Error in BDDGenerationNode: {e}")
+            feature_text = self._mock_bdd_generator(openapi_spec)
 
-                result = self.agent.invoke({"messages": messages})
-
-                # Debug: raw agent result (truncated)
-                raw_preview = repr(result)
-                if len(raw_preview) > 800:
-                    raw_preview = raw_preview[:800] + "...[truncated]"
-                print(
-                    f"[BDDGenerationNode] Raw agent result (truncated): {raw_preview}",
-                    file=sys.stderr,
-                )
-
-                # Try to extract the feature_text from the result
-                if hasattr(result, "content"):
-                    feature_text = result.content
-                elif isinstance(result, dict) and "messages" in result:
-                    ai_msgs = [
-                        m
-                        for m in result["messages"]
-                        if getattr(m, "type", None) == "ai"
-                        or m.__class__.__name__ == "AIMessage"
-                    ]
-                    feature_text = ai_msgs[-1].content if ai_msgs else None
-                elif isinstance(result, dict) and "feature_text" in result:
-                    feature_text = result["feature_text"]
-                elif isinstance(result, str):
-                    feature_text = result
-                else:
-                    feature_text = str(result or "")
-            except Exception as e:
-                print(f"[BDDGenerationNode] LLM error: {e}", file=sys.stderr)
-                feature_text = None
-
-        # If LLM failed, fallback to mock
-        if not feature_text or not str(feature_text).strip():
-            feature_text = self._mock_bdd_generator(openapi_spec or "")
-
-        # Debug: final feature_text preview
-        preview = str(feature_text).strip()
-        if len(preview) > 800:
-            preview = preview[:800] + "\n...[truncated]"
-        print(
-            f"[BDDGenerationNode] Final feature_text (truncated):\n{preview}",
-            file=sys.stderr,
-        )
 
         # Save on state and write categorized .feature files
         state.feature_text = feature_text
