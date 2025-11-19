@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 from datetime import datetime
 from dotenv import load_dotenv
@@ -215,7 +216,7 @@ class BDDGenerationNode:
             name_line = lines[0]
             feat_title = name_line.replace("Feature:", "").strip()
             safe_file = re.sub(r"\s+", "_", feat_title.lower()) + ".feature"
-            print(f"[DEBUG] Processing Feature: {feat_title}", file=sys.stderr)
+            # print(f"[DEBUG] Processing Feature: {feat_title}", file=sys.stderr)
 
             # We want human-readable headers:
             #   Feature: XYZ

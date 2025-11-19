@@ -172,7 +172,7 @@ export class BDDPanel {
             padding: 10px;
             border-radius: 6px;
             border: 1px solid var(--vscode-editorWidget-border);
-            height: 30vh;
+            height: 60vh;
             overflow-y: auto;
           }
 
