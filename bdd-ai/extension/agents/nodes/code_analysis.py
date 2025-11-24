@@ -200,10 +200,7 @@ class CodeAnalysisNode:
         """Save generated OpenAPI YAML inside the same project folder."""
         output_dir = os.path.join(project_path, "output")
         os.makedirs(output_dir, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"openapi_{timestamp}.yaml"
-        # filename = "openapi.yaml"
+        filename = "openapi.yaml"
         file_path = os.path.join(output_dir, filename)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(yaml_content)
@@ -213,14 +210,14 @@ class CodeAnalysisNode:
     def __call__(self, data):
         source_path = data.project_path
 
-        # openapi_path = os.path.join(source_path, "output", "openapi.yaml")
+        openapi_path = os.path.join(source_path, "output", "openapi.yaml")
 
-        # if os.path.exists(openapi_path):
-        #     # Read and return existing OpenAPI spec
-        #     with open(openapi_path, "r", encoding="utf-8") as f:
-        #         existing_spec = f.read()
-        #     data.analysis = existing_spec
-        #     return data
+        if os.path.exists(openapi_path):
+            # Read and return existing OpenAPI spec
+            with open(openapi_path, "r", encoding="utf-8") as f:
+                existing_spec = f.read()
+            data.analysis = existing_spec
+            return data
 
         # Step 1: read all files & chunk
         chunks = self.read_all_files(source_path)
