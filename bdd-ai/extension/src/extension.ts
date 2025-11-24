@@ -4,6 +4,9 @@ import * as path from "path";
 import { generateTests, executeTests } from "./api";
 import { BDDPanel } from "./panel";
 
+let isGenerating = false;
+let isRunningTests = false;
+
 export function activate(context: vscode.ExtensionContext) {
 
   function copyFolderRecursiveSync(src: string, dest: string) {
@@ -89,6 +92,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   // 🧩 Command to generate tests
   const generateCmd = vscode.commands.registerCommand("extension.generateBDD", async () => {
+
+    if (isGenerating) {
+      vscode.window.showWarningMessage("⚠️ BDD Generation is already running.");
+      return;
+    }
+    isGenerating = true;
     
     const workspace = vscode.workspace.workspaceFolders?.[0];
     if (!workspace) {
@@ -98,24 +107,51 @@ export function activate(context: vscode.ExtensionContext) {
 
     const workspacePath = workspace.uri.fsPath;
     vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "🔍 Generating BDD Tests..." },
+      { location: vscode.ProgressLocation.Notification,
+        title: "🔍 Generating BDD Tests..." },
       async () => {
         try {
           const result = await generateTests(workspacePath);
           const panel = BDDPanel.show(result.feature_text || "No tests generated");
           panel.onDidClickRun(async () => {
+
+            if (isRunningTests) {
+              vscode.window.showWarningMessage("⚠️ Tests are already running.");
+              return;
+            }
+            isRunningTests = true;
+
+
             const updated = panel.getFeatureText();
             vscode.window.withProgress(
-              { location: vscode.ProgressLocation.Notification, title: "🏃 Running Tests..." },
+              { location: vscode.ProgressLocation.Notification,
+                title: "🏃 Running Tests..." },
               async () => {
-                const exec = await executeTests(workspacePath, updated, result.analysis || "No Specifications file");
+
+                try {
+                const exec = await executeTests(
+                  workspacePath,
+                  updated,
+                  result.analysis || "No Specifications file"
+                );
+                // const exec = await executeTests(workspacePath, updated, result.analysis || "No Specifications file");
                 vscode.window.showInformationMessage("✅ Test Execution Complete!");
+
+
                 panel.showOutput(exec.execution_output || "No output");
+
+                } catch (err: any) {
+                vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
+              } finally {
+                isRunningTests = false;  // 🔓 unlock test execution
+              }
               }
             );
           });
         } catch (err: any) {
           vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
+        } finally {
+          isGenerating = false;
         }
       }
     );
