@@ -316,6 +316,14 @@ class TestExecutionNode:
     # ------------------------------------------------------------------
     def __call__(self, state, batch_size: int = 5):
         try:
+            openapi_dir = os.path.join(state.project_path, "output")
+            filepath = self._find_latest_openapi_spec(openapi_dir)
+            with open(filepath, "r", encoding="utf-8") as f:
+                if filepath.endswith((".yaml", ".yml")):
+                    state.analysis = yaml.safe_load(f)
+                else:
+                    state.analysis = json.load(f)
+
             scenarios = [s.strip() for s in re.split(r"\bScenario:", state.feature_text) if s.strip()]
             all_results = []
             all_curls = []

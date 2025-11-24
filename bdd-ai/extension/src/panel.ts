@@ -24,7 +24,15 @@ export class BDDPanel {
             this.featureText = message.text;
             break;
           case "run":
-            if (this._onRunClicked) this._onRunClicked(this.featureText);
+            if (this.featureText){
+              vscode.commands.executeCommand(
+                "extension.executeBDD", 
+                this.featureText, 
+                BDDPanel.currentPanel);
+            }
+            else {
+              vscode.window.showErrorMessage("❌ Cannot Run: No featureText detected.");
+            }
             break;
           case "save":
             if (this.currentFilePath) {

@@ -103,23 +103,44 @@ export function activate(context: vscode.ExtensionContext) {
         try {
           const result = await generateTests(workspacePath);
           const panel = BDDPanel.show(result.feature_text || "No tests generated");
-          panel.onDidClickRun(async () => {
-            const updated = panel.getFeatureText();
-            vscode.window.withProgress(
-              { location: vscode.ProgressLocation.Notification, title: "🏃 Running Tests..." },
-              async () => {
-                const exec = await executeTests(workspacePath, updated, result.analysis || "No Specifications file");
-                vscode.window.showInformationMessage("✅ Test Execution Complete!");
-                panel.showOutput(exec.execution_output || "No output");
-              }
-            );
-          });
         } catch (err: any) {
           vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
         }
       }
     );
   });
+
+  const executeBDD = vscode.commands.registerCommand(
+  "extension.executeBDD",
+  async (updated : string, panel: BDDPanel
+  ) => {
+    const workspace = vscode.workspace.workspaceFolders?.[0];
+    if (!workspace) {
+      vscode.window.showErrorMessage("❌ No workspace folder open!");
+      return;
+    }
+
+    const workspacePath = workspace.uri.fsPath;
+
+    vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "🏃 Running BDD Tests..." },
+      async () => {
+        try {
+         
+          const exec = await executeTests(workspacePath, updated || "No Specifications file");
+          vscode.window.showInformationMessage("✅ Test Execution Complete!");
+          panel.showOutput(exec.execution_output || "No output");
+          
+          vscode.window.showInformationMessage("✅ Test Execution Complete!");
+
+        } catch (err: any) {
+          vscode.window.showErrorMessage(`❌ Error executing tests: ${err.message}`);
+        }
+      }
+    );
+  }
+);
+
 
   // 🌳 Register Feature Explorer
   const provider = new FeatureTreeDataProvider();
@@ -155,7 +176,8 @@ export function activate(context: vscode.ExtensionContext) {
   generateCmd,
   saveFileCmd,
   saveVersionFolderCmd,   // <-- REQUIRED
-  treeView
+  treeView,
+  executeBDD
 );
 
 }
