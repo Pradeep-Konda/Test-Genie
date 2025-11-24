@@ -14,6 +14,8 @@ import yaml
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
+import html
+
 
 
 class CurlInput(BaseModel):
@@ -221,7 +223,25 @@ class TestExecutionNode:
             try:
                 content = response.json()
             except:
-                content = response.text
+                raw = response.text
+
+                # --- CLEAN UGLY FLASK DEBUG PAGE ---
+                # If Flask returns a big HTML traceback, simplify it
+                if "<!DOCTYPE html>" in raw or "<html" in raw.lower():
+                    # Extract only the main Python exception line
+                    match = re.search(r"(KeyError:.*?)(<|$)", raw, re.DOTALL)
+                    if not match:
+                        match = re.search(r"(Exception:.*?)(<|$)", raw, re.DOTALL)
+                    if not match:
+                        match = re.search(r"(Error:.*?)(<|$)", raw, re.DOTALL)
+
+                    if match:
+                        content = match.group(1).strip()
+                    else:
+                        content = f"HTTP {response.status_code} Error"
+                else:
+                    content = raw
+
 
             return {
                 "url": url,
@@ -261,7 +281,7 @@ class TestExecutionNode:
         openapi_path = self._find_latest_openapi_spec(openapi_dir)
         coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, openapi_path)
 
-        html = [
+        html_output = [
             "<html><head><title>API Test Report</title>",
             "<style>body{font-family:Arial;}table{width:100%;border-collapse:collapse;}"
             "th,td{border:1px solid #ccc;padding:6px;}</style>",
@@ -283,29 +303,28 @@ class TestExecutionNode:
             # Each scenario uses matching index from curl_commands
             http_request = r.get("url", "N/A")
             method = r.get("method", "N/A")
-            html.append(
+            html_output.append(
                 f"<tr>"
                 f"<td>{scenario}</td>"
                 f"<td><code>{request_body}</code></td>"
-                f"<td>{status}</td>"
+                f"<td>{html.escape(str(status))}</td>"
                 f"<td>{status_code}</td>"
                 f"<td><code>{http_request}</code></td>"
                 f"<td>{method}</td>"
                 f"</tr>"
             )
 
-        html.append("</table></body></html>")
+        html_output.append("</table></body></html>")
 
         # --- Display uncovered endpoints if any ---
         if uncovered:
-            html.append("<h2>Uncovered Endpoints from OpenAPI Spec</h2><ul>")
+            html_output.append("<h2>Uncovered Endpoints from OpenAPI Spec</h2><ul>")
             for ep in uncovered:
-                html.append(f"<li>{ep}</li>")
-            html.append("</ul>")
+                html_output.append(f"<li>{ep}</li>")
+            html_output.append("</ul>")
 
-        html.append("</body></html>")
-
-        full_html = "\n".join(html)
+       
+        full_html = "\n".join(html_output)
 
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(full_html)

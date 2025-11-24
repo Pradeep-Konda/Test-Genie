@@ -4,42 +4,43 @@ import * as path from "path";
 import { generateTests, executeTests } from "./api";
 import { BDDPanel } from "./panel";
 
+let isGenerating = false;
+let isRunningTests = false;
+
 export function activate(context: vscode.ExtensionContext) {
 
   function copyFolderRecursiveSync(src: string, dest: string) {
-  if (!fs.existsSync(dest)) {
-    fs.mkdirSync(dest);
-  }
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest);
+    }
 
-  const entries = fs.readdirSync(src, { withFileTypes: true });
+    const entries = fs.readdirSync(src, { withFileTypes: true });
 
-  for (let entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
+    for (let entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
 
-    if (entry.isDirectory()) {
-      copyFolderRecursiveSync(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
+      if (entry.isDirectory()) {
+        copyFolderRecursiveSync(srcPath, destPath);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+      }
     }
   }
-}
-
 
   function getFormattedTimestamp() {
-  const now = new Date();
+    const now = new Date();
 
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
 
-  const hh = String(now.getHours()).padStart(2, "0");
-  const min = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
+    const hh = String(now.getHours()).padStart(2, "0");
+    const min = String(now.getMinutes()).padStart(2, "0");
+    const ss = String(now.getSeconds()).padStart(2, "0");
 
-  return `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
-}
-
+    return `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
+  }
 
   const saveFileCmd = vscode.commands.registerCommand(
     "extension.saveThisFeature",
@@ -54,42 +55,45 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   const saveVersionFolderCmd = vscode.commands.registerCommand(
-  "extension.saveVersionFolder",
-  async () => {
-    try {
-      const workspace = vscode.workspace.workspaceFolders?.[0];
-      if (!workspace) return;
+    "extension.saveVersionFolder",
+    async () => {
+      try {
+        const workspace = vscode.workspace.workspaceFolders?.[0];
+        if (!workspace) return;
 
-      const workspacePath = workspace.uri.fsPath;
-      const bddDir = path.join(workspacePath, "bdd_tests");
-      const versionsDir = path.join(workspacePath, "Versions");
+        const workspacePath = workspace.uri.fsPath;
+        const bddDir = path.join(workspacePath, "bdd_tests");
+        const versionsDir = path.join(workspacePath, "Versions");
 
-      if (!fs.existsSync(versionsDir))
-        fs.mkdirSync(versionsDir);
+        if (!fs.existsSync(versionsDir))
+          fs.mkdirSync(versionsDir);
 
-      // Create timestamped folder
-      const timestamp = getFormattedTimestamp();
+        const timestamp = getFormattedTimestamp();
 
-      const versionFolder = path.join(versionsDir, `version_${timestamp}`);
-      fs.mkdirSync(versionFolder);
+        const versionFolder = path.join(versionsDir, `version_${timestamp}`);
+        fs.mkdirSync(versionFolder);
 
-      copyFolderRecursiveSync(bddDir, versionFolder);
+        copyFolderRecursiveSync(bddDir, versionFolder);
 
-      vscode.window.showInformationMessage(
-        `📦 Version saved: ${path.basename(versionFolder)}`
-      );
+        vscode.window.showInformationMessage(
+          `📦 Version saved: ${path.basename(versionFolder)}`
+        );
 
-    } catch (err: any) {
-      vscode.window.showErrorMessage("❌ Failed to save version: " + err.message);
+      } catch (err: any) {
+        vscode.window.showErrorMessage("❌ Failed to save version: " + err.message);
+      }
     }
-  }
-);
+  );
 
-
-
-  // 🧩 Command to generate tests
+  // 🧩 Generate Tests
   const generateCmd = vscode.commands.registerCommand("extension.generateBDD", async () => {
-    
+
+    if (isGenerating) {
+      vscode.window.showWarningMessage("⚠️ BDD Generation is already running.");
+      return;
+    }
+    isGenerating = true;
+
     const workspace = vscode.workspace.workspaceFolders?.[0];
     if (!workspace) {
       vscode.window.showErrorMessage("❌ No workspace folder open!");
@@ -97,57 +101,70 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     const workspacePath = workspace.uri.fsPath;
+
     vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: "🔍 Generating BDD Tests..." },
       async () => {
         try {
           const result = await generateTests(workspacePath);
           const panel = BDDPanel.show(result.feature_text || "No tests generated");
+
         } catch (err: any) {
           vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
+        } finally {
+          isGenerating = false;
         }
       }
     );
   });
 
+  // Direct execution from panel
   const executeBDD = vscode.commands.registerCommand(
-  "extension.executeBDD",
-  async (updated : string, panel: BDDPanel
-  ) => {
-    const workspace = vscode.workspace.workspaceFolders?.[0];
-    if (!workspace) {
-      vscode.window.showErrorMessage("❌ No workspace folder open!");
-      return;
-    }
+    "extension.executeBDD",
+    async (updated: string, panel: BDDPanel) => {
 
-    const workspacePath = workspace.uri.fsPath;
-
-    vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "🏃 Running BDD Tests..." },
-      async () => {
-        try {
-         
-          const exec = await executeTests(workspacePath, updated || "No Specifications file");
-          vscode.window.showInformationMessage("✅ Test Execution Complete!");
-          panel.showOutput(exec.execution_output || "No output");
-          
-          vscode.window.showInformationMessage("✅ Test Execution Complete!");
-
-        } catch (err: any) {
-          vscode.window.showErrorMessage(`❌ Error executing tests: ${err.message}`);
-        }
+      // 🔒 Prevent running twice
+      if (isRunningTests) {
+        vscode.window.showWarningMessage("⚠️ Tests are already running.");
+        return;
       }
-    );
-  }
-);
+      isRunningTests = true;
 
+      const workspace = vscode.workspace.workspaceFolders?.[0];
+      if (!workspace) {
+        vscode.window.showErrorMessage("❌ No workspace folder open!");
+        isRunningTests = false;
+        return;
+      }
 
-  // 🌳 Register Feature Explorer
+      const workspacePath = workspace.uri.fsPath;
+
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "🏃 Running BDD Tests..." },
+        async () => {
+          try {
+
+            const exec = await executeTests(workspacePath, updated || "No Specifications file");
+            vscode.window.showInformationMessage("✅ Test Execution Complete!");
+            panel.showOutput(exec.execution_output || "No output");
+
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`❌ Error executing tests: ${err.message}`);
+          } finally {
+            isRunningTests = false; // 🔓 unlock
+          }
+        }
+      );
+    }
+  );
+
+  // 🌳 Feature Explorer
   const provider = new FeatureTreeDataProvider();
-  const treeView = vscode.window.createTreeView("featureExplorer", { treeDataProvider: provider });
+  const treeView = vscode.window.createTreeView("featureExplorer", {
+    treeDataProvider: provider,
+  });
   vscode.workspace.onDidChangeWorkspaceFolders(() => provider.refresh());
 
-  // 📂 Handle selection → show in panel
   treeView.onDidChangeSelection(async (event) => {
     const item = event.selection[0];
     if (!item) return;
@@ -156,47 +173,53 @@ export function activate(context: vscode.ExtensionContext) {
     if (!fullPath) return;
 
     const stat = fs.statSync(fullPath);
+
     if (stat.isFile() && fullPath.endsWith(".feature")) {
       const text = fs.readFileSync(fullPath, "utf-8");
       const panel = BDDPanel.show(text);
-    panel.setFilePath(fullPath); // <-- Add this line
-   } else if (stat.isDirectory()) {
+      panel.setFilePath(fullPath);
+    } else if (stat.isDirectory()) {
       const features = getFeatureFiles(fullPath);
-      const combined = features.map((f) => fs.readFileSync(f, "utf-8")).join("\n\n");
+      const combined = features
+        .map((f) => fs.readFileSync(f, "utf-8"))
+        .join("\n\n");
       BDDPanel.show(combined || "📁 No .feature files found.");
     }
   });
 
-  // 🧹 Register refresh command
-  vscode.commands.registerCommand("featureExplorer.refresh", () => provider.refresh());
-
-  // context.subscriptions.push(generateCmd, treeView);
+  vscode.commands.registerCommand("featureExplorer.refresh", () =>
+    provider.refresh()
+  );
 
   context.subscriptions.push(
-  generateCmd,
-  saveFileCmd,
-  saveVersionFolderCmd,   // <-- REQUIRED
-  treeView,
-  executeBDD
-);
-
+    generateCmd,
+    saveFileCmd,
+    saveVersionFolderCmd,
+    treeView,
+    executeBDD
+  );
 }
 
-/** 🔍 Recursively collect all .feature files */
+// Recursively get .feature files
 function getFeatureFiles(dir: string): string[] {
   let results: string[] = [];
   if (!fs.existsSync(dir)) return results;
+
   for (const entry of fs.readdirSync(dir)) {
     const full = path.join(dir, entry);
     const stat = fs.statSync(full);
+
     if (stat.isDirectory()) results = results.concat(getFeatureFiles(full));
     else if (entry.endsWith(".feature")) results.push(full);
   }
+
   return results;
 }
 
-/** 🌳 Custom provider for Feature Explorer */
-class FeatureTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+// Tree Provider
+class FeatureTreeDataProvider
+  implements vscode.TreeDataProvider<vscode.TreeItem>
+{
   private _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
@@ -208,14 +231,19 @@ class FeatureTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem
     return element;
   }
 
-  getChildren(element?: vscode.TreeItem): vscode.ProviderResult<vscode.TreeItem[]> {
+  getChildren(
+    element?: vscode.TreeItem
+  ): vscode.ProviderResult<vscode.TreeItem[]> {
     const workspace = vscode.workspace.workspaceFolders?.[0];
     if (!workspace) return [];
 
-    const baseDir = element ? element.resourceUri!.fsPath : workspace.uri.fsPath;
+    const baseDir = element
+      ? element.resourceUri!.fsPath
+      : workspace.uri.fsPath;
     if (!fs.existsSync(baseDir)) return [];
 
     const items: vscode.TreeItem[] = [];
+
     const entries = fs
       .readdirSync(baseDir)
       .filter((e) => {
@@ -242,18 +270,20 @@ class FeatureTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem
       );
 
       item.label = entry;
-      item.tooltip = `${full}\n${isDir ? "📁 Folder" : "🧩 Feature File"}${
-        !isDir ? `\nSize: ${(stat.size / 1024).toFixed(1)} KB` : ""
-      }`;
+      item.tooltip = `${full}\n${
+        isDir ? "📁 Folder" : "🧩 Feature File"
+      }${!isDir ? `\nSize: ${(stat.size / 1024).toFixed(1)} KB` : ""}`;
       item.iconPath = isDir
         ? new vscode.ThemeIcon("folder-library")
-        : new vscode.ThemeIcon("symbol-keyword"); // Gherkin-like icon
+        : new vscode.ThemeIcon("symbol-keyword");
       item.contextValue = isDir ? "folder" : "feature";
 
       items.push(item);
     }
+
     return items;
   }
 }
 
 export function deactivate() {}
+
