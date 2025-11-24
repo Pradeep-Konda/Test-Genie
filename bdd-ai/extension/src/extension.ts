@@ -109,38 +109,6 @@ export function activate(context: vscode.ExtensionContext) {
           const result = await generateTests(workspacePath);
           const panel = BDDPanel.show(result.feature_text || "No tests generated");
 
-          // 🔒 Prevent multiple clicks on RUN TESTS button
-          panel.onDidClickRun(async () => {
-            if (isRunningTests) {
-              vscode.window.showWarningMessage("⚠️ Tests are already running.");
-              return;
-            }
-            isRunningTests = true;
-
-            const updated = panel.getFeatureText();
-
-            vscode.window.withProgress(
-              { location: vscode.ProgressLocation.Notification, title: "🏃 Running Tests..." },
-              async () => {
-                try {
-                  const exec = await executeTests(
-                    workspacePath,
-                    updated,
-                    result.analysis || "No Specifications file"
-                  );
-
-                  vscode.window.showInformationMessage("✅ Test Execution Complete!");
-                  panel.showOutput(exec.execution_output || "No output");
-
-                } catch (err: any) {
-                  vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
-                } finally {
-                  isRunningTests = false; // 🔓 unlock
-                }
-              }
-            );
-          });
-
         } catch (err: any) {
           vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
         } finally {
