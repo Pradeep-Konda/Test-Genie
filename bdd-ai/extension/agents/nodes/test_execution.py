@@ -94,41 +94,24 @@ class TestExecutionNode:
     def _find_latest_openapi_spec(self, openapi_dir: str):
         """Finds the newest OpenAPI spec file (.yaml or .json) in the outputs directory."""
         try:
-            candidates = glob.glob(os.path.join(openapi_dir, "openapi_*.*"))
-            if not candidates:
+            file_path = os.path.join(openapi_dir, "openapi.yaml")
+            if os.path.exists(file_path):
+                return file_path 
+            else: 
                 return None
-
-            latest = max(candidates, key=os.path.getmtime)
-            return latest
-        except Exception as e:
+        except Exception:
             return None
         
     # ------------------------------------------------------------------    
     # OpenAPI Traceability & Coverage
     # ------------------------------------------------------------------
-    def _calculate_openapi_coverage(self, feature_text: str, openapi_path: str):
+    def _calculate_openapi_coverage(self, feature_text: str, spec: str):
         """
         Computes OpenAPI test coverage based on the feature file content.
         Matches endpoints + methods defined in the spec.
         """
         try:
-            if not openapi_path or not os.path.exists(openapi_path):
-                return 0.0, []
-
-            # Load YAML or JSON
-            with open(openapi_path, "r", encoding="utf-8") as f:
-                if openapi_path.endswith((".yaml", ".yml")):
-                    spec = yaml.safe_load(f)
-                else:
-                    spec = json.load(f)
-
             
-            # base_path = ""
-            # servers = spec.get("servers", [])
-            # if servers:
-            #     server_url = servers[0].get("url", "").rstrip("/")
-            #     base_path = server_url
-
             # Extract paths and methods
             defined = []
             for path, methods in spec.get("paths", {}).items():
@@ -271,15 +254,13 @@ class TestExecutionNode:
         curl_cmds = data.get("curl_commands", [])
 
         output_dir = os.path.join(state.project_path, "test_reports")
-        openapi_dir = os.path.join(state.project_path, "output")
         os.makedirs(output_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
         # --- Calculate OpenAPI coverage ---
-        openapi_path = self._find_latest_openapi_spec(openapi_dir)
-        coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, openapi_path)
+        coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, state.analysis)
 
         html_output = [
             "<html><head><title>API Test Report</title>",
