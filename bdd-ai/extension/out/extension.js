@@ -41,6 +41,22 @@ const path = __importStar(require("path"));
 const api_1 = require("./api");
 const panel_1 = require("./panel");
 function activate(context) {
+    function copyFolderRecursiveSync(src, dest) {
+        if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest);
+        }
+        const entries = fs.readdirSync(src, { withFileTypes: true });
+        for (let entry of entries) {
+            const srcPath = path.join(src, entry.name);
+            const destPath = path.join(dest, entry.name);
+            if (entry.isDirectory()) {
+                copyFolderRecursiveSync(srcPath, destPath);
+            }
+            else {
+                fs.copyFileSync(srcPath, destPath);
+            }
+        }
+    }
     function getFormattedTimestamp() {
         const now = new Date();
         const yyyy = now.getFullYear();
@@ -74,15 +90,7 @@ function activate(context) {
             const timestamp = getFormattedTimestamp();
             const versionFolder = path.join(versionsDir, `version_${timestamp}`);
             fs.mkdirSync(versionFolder);
-            // Copy all feature files
-            const featureFiles = fs
-                .readdirSync(bddDir)
-                .filter(f => f.endsWith(".feature"));
-            featureFiles.forEach(file => {
-                const src = path.join(bddDir, file);
-                const dest = path.join(versionFolder, file);
-                fs.copyFileSync(src, dest);
-            });
+            copyFolderRecursiveSync(bddDir, versionFolder);
             vscode.window.showInformationMessage(`📦 Version saved: ${path.basename(versionFolder)}`);
         }
         catch (err) {

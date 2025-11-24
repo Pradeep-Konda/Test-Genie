@@ -101,67 +101,93 @@ class TestExecutionNode:
         except Exception as e:
             return None
         
-     # ------------------------------------------------------------------    
+    # ------------------------------------------------------------------    
     # OpenAPI Traceability & Coverage
     # ------------------------------------------------------------------
-    def _calculate_openapi_coverage(self, features, openapi_path: str):
-
+    def _calculate_openapi_coverage(self, feature_text: str, openapi_path: str):
+        """
+        Computes OpenAPI test coverage based on the feature file content.
+        Matches endpoints + methods defined in the spec.
+        """
         try:
             if not openapi_path or not os.path.exists(openapi_path):
                 return 0.0, []
 
-            # Auto-load YAML or JSON
+            # Load YAML or JSON
             with open(openapi_path, "r", encoding="utf-8") as f:
                 if openapi_path.endswith((".yaml", ".yml")):
                     spec = yaml.safe_load(f)
                 else:
                     spec = json.load(f)
 
-            base_path = ""
-            servers = spec.get("servers", [])
-            if servers and isinstance(servers, list):
-                url = servers[0].get("url")
-                if isinstance(url, str):
-                    base_path = url.rstrip("/") 
+            
+            # base_path = ""
+            # servers = spec.get("servers", [])
+            # if servers:
+            #     server_url = servers[0].get("url", "").rstrip("/")
+            #     base_path = server_url
 
+            # Extract paths and methods
             defined = []
             for path, methods in spec.get("paths", {}).items():
                 for method in methods.keys():
+                    method = method.upper()
 
-                    # Apply base_path ⇒ "/api" + "/users/"
-                    full_path = f"{base_path}{path}"
+                    # PATH ONLY (NO SERVER HOST)
+                    openapi_path_only = path.rstrip("/")
 
-                    # Convert OpenAPI params → regex
-                    regex_path = re.sub(r"\{[^/]+\}", r"[^/]+", full_path)
+                    # Replace {param} → regex for match
+                    regex_path = re.sub(r"\{[^/]+\}", r"[^/]+", openapi_path_only)
 
-                    # Build regex (allow exact or trailing slash match)
-                    pattern = re.compile(rf"{regex_path}(/)?")
-                    defined.append((method.upper(), full_path, pattern))
+                    # Exact match (allow trailing slash & ignore query params)
+                    # pattern = re.compile(rf"^{regex_path}(/)?(\?.*)?$")
+                    pattern = re.compile(regex_path)
 
-            # Use state.features instead of reading any files
-            feature_text = features if isinstance(features, str) else "\n".join(features)
+                    defined.append((method, openapi_path_only, pattern))
 
-            executed_matches = set()
+            defined_set = {(m, p) for (m, p, _) in defined}
 
-            for method, full_path, pattern in defined:
+            # Normalize feature file
+            feature_lines = feature_text.splitlines()
+            feature_lower = feature_text.lower()
 
-                # Method must appear anywhere in scenario
-                if method in feature_text:
-                    # Search for matching URL usage
-                    if pattern.search(feature_text):
-                        executed_matches.add((method, full_path))
+            # Extract all potential URLs from feature file
+            url_candidates = []
+            for line in feature_lines:
+                found = re.findall(r"/[^\s\"']+", line)
+                url_candidates.extend(found)
+
+            # Normalize paths (remove query params)
+            normalized_candidates = []
+            for u in url_candidates:
+                clean = u.split("?")[0].rstrip("/")
+                normalized_candidates.append(clean)
+
+            # Coverage detection
+            covered_set = set()
+
+            for (method, openapi_path_only, pattern) in defined:
+                # Check if HTTP method appears in feature text
+                if method.lower() not in feature_lower:
+                    continue
+
+                # Check if any URL in feature matches this OpenAPI path
+                for cand in normalized_candidates:
+                    if pattern.match(cand):
+                        covered_set.add((method, openapi_path_only))
+                        break
 
             # Compute coverage
-            defined_set = {(m, p) for m, p, _ in defined}
-            executed_set = set(executed_matches)
-
-            uncovered = sorted([f"{m} {p}" for (m, p) in (defined_set - executed_set)])
-            coverage = (len(executed_set) / len(defined_set) * 100) if defined_set else 0.0
+            uncovered = sorted([f"{m} {p}" for (m, p) in (defined_set - covered_set)])
+            total = len(defined_set)
+            covered = len(covered_set)
+            coverage = (covered / total * 100) if total else 0.0
 
             return coverage, uncovered
 
         except Exception as e:
-            return 0.0, []
+            return 0.0, [f"Coverage calculation failed: {str(e)}"]
+
 
     # ------------------------------------------------------------------
     # FAST HTTP Executor (Python requests)
@@ -225,13 +251,14 @@ class TestExecutionNode:
         curl_cmds = data.get("curl_commands", [])
 
         output_dir = os.path.join(state.project_path, "test_reports")
+        openapi_dir = os.path.join(state.project_path, "output")
         os.makedirs(output_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
         # --- Calculate OpenAPI coverage ---
-        openapi_path = self._find_latest_openapi_spec(output_dir)
+        openapi_path = self._find_latest_openapi_spec(openapi_dir)
         coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, openapi_path)
 
         html = [
