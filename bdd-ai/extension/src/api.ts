@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
 import * as vscode from "vscode";
+import { exists } from "fs";
 
 export interface BDDResult {
   analysis?: string;
@@ -37,13 +38,25 @@ async function getPythonPath(): Promise<string> {
   }
 }
 
+export async function fileExists(dirUri: vscode.Uri, fileName: string): Promise<boolean> {
+  const fileUri = vscode.Uri.joinPath(dirUri, fileName);
+
+  try {
+    await vscode.workspace.fs.stat(fileUri);
+    return true;
+  } catch (error) {
+    return false; // stat throws if file not found
+  }
+}
+
 /**
  * Run the Python backend with specified phase ("generate" or "execute")
  */
 async function runPython(
   phase: string,
   inputPath: string,
-  updatedFeatureText?: string
+  updatedFeatureText?: string,
+  token?: vscode.CancellationToken
 ): Promise<BDDResult> {
   const pythonPath = await getPythonPath();
 
@@ -63,13 +76,24 @@ async function runPython(
   console.log("📦 Exists:", fs.existsSync(scriptPath));
   console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
 
+  
+  if (phase === "generate") {
+    const exists = await fileExists(vscode.Uri.file(inputPath + "/output"), "openapi.yaml");
+    if(exists) {
+        vscode.window.showInformationMessage("Found openapi.yaml in the workspace!");
+    }
+    else{
+        vscode.window.showWarningMessage("OpenAPI spec (openapi.yaml) not found!, generating using agent.");
+    }
+  }
+
   return new Promise((resolve, reject) => {
     // ✅ Build args safely (no undefined allowed)
     const args: string[] = [scriptPath, phase, inputPath];
 
     if (updatedFeatureText) args.push(updatedFeatureText);
     
-    console.log("⚙️ Running with args:", args);
+    //console.log("⚙️ Running with args:", args);
 
     // Final safeguard (filters out accidental undefined/null)
     const safeArgs = args.filter((a): a is string => typeof a === "string");
@@ -81,6 +105,13 @@ async function runPython(
         OPENAI_API_KEY: openaiApiKey,
       },
     });
+
+    if (token) {
+      token.onCancellationRequested(() => {
+        vscode.window.showInformationMessage("⛔ User cancelled — killing process...");
+        python.kill("SIGKILL");
+      });
+    }
 
     let output = "";
     let errorOutput = "";
@@ -115,8 +146,8 @@ async function runPython(
 /**
  * Generates BDD test cases by analyzing the codebase
  */
-export async function generateTests(workspacePath: string) {
-  return runPython("generate", workspacePath);
+export async function generateTests(workspacePath: string, token?: vscode.CancellationToken) {
+  return runPython("generate", workspacePath, undefined, token);
 }
 
 /**
@@ -165,6 +196,7 @@ export function saveUpdatedFeatureFile(workspacePath: string, featureText: strin
 export async function executeTests(
   workspacePath: string,
   updatedFeatureText?: string,
+  token?: vscode.CancellationToken
 ) {
-  return runPython("execute", workspacePath, updatedFeatureText);
+  return runPython("execute", workspacePath, updatedFeatureText, token);
 }

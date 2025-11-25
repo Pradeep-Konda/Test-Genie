@@ -103,14 +103,21 @@ export function activate(context: vscode.ExtensionContext) {
     const workspacePath = workspace.uri.fsPath;
 
     vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "🔍 Generating BDD Tests..." },
-      async () => {
+      { location: vscode.ProgressLocation.Notification, 
+        title: "🔍 Generating BDD Tests...",
+        cancellable: true
+      },
+      async (progress, token) => {
         try {
-          const result = await generateTests(workspacePath);
+          const result = await generateTests(workspacePath, token);
           const panel = BDDPanel.show(result.feature_text || "No tests generated");
 
         } catch (err: any) {
-          vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
+          if (token.isCancellationRequested) {
+              console.log("⛔ BDD test generation cancelled.");
+            } else {
+              vscode.window.showErrorMessage(`❌ Error generating tests: ${err.message}`);
+            }
         } finally {
           isGenerating = false;
         }
@@ -140,16 +147,23 @@ export function activate(context: vscode.ExtensionContext) {
       const workspacePath = workspace.uri.fsPath;
 
       vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: "🏃 Running BDD Tests..." },
-        async () => {
+        { location: vscode.ProgressLocation.Notification, 
+          title: "🏃 Running BDD Tests...",
+          cancellable: true
+        },
+        async (progress, token) => {
           try {
 
-            const exec = await executeTests(workspacePath, updated || "No Specifications file");
+            const exec = await executeTests(workspacePath, updated || "No Specifications file", token);
             vscode.window.showInformationMessage("✅ Test Execution Complete!");
             panel.showOutput(exec.execution_output || "No output");
 
           } catch (err: any) {
-            vscode.window.showErrorMessage(`❌ Error executing tests: ${err.message}`);
+            if (token.isCancellationRequested) {
+              console.log("⛔ BDD test execution cancelled.");
+            } else {
+              vscode.window.showErrorMessage(`❌ Error executing tests: ${err.message}`);
+            }
           } finally {
             isRunningTests = false; // 🔓 unlock
           }
