@@ -111,7 +111,6 @@ class CodeAnalysisNode:
                 "- request body schema (if detectable)\n"
                 "- query/path parameters\n"
                 "- JSON response examples (if visible)\n\n"
-                "If the source defines no explicit endpoints, output an empty `paths: {}` section.\n"
                 "Return ONLY the YAML. Do not add explanations or Markdown such as ```yaml."
             )
 
