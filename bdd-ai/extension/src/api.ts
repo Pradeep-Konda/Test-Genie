@@ -43,8 +43,7 @@ async function getPythonPath(): Promise<string> {
 async function runPython(
   phase: string,
   inputPath: string,
-  updatedFeatureText?: string,
-  analysis?: string
+  updatedFeatureText?: string
 ): Promise<BDDResult> {
   const pythonPath = await getPythonPath();
 
@@ -69,8 +68,7 @@ async function runPython(
     const args: string[] = [scriptPath, phase, inputPath];
 
     if (updatedFeatureText) args.push(updatedFeatureText);
-    if (analysis) args.push(analysis);
-
+    
     console.log("⚙️ Running with args:", args);
 
     // Final safeguard (filters out accidental undefined/null)
@@ -167,7 +165,6 @@ export function saveUpdatedFeatureFile(workspacePath: string, featureText: strin
 export async function executeTests(
   workspacePath: string,
   updatedFeatureText?: string,
-  analysis?: string
 ) {
-  return runPython("execute", workspacePath, updatedFeatureText, analysis);
+  return runPython("execute", workspacePath, updatedFeatureText);
 }
