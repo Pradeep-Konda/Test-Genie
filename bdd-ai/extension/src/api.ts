@@ -55,7 +55,8 @@ export async function fileExists(dirUri: vscode.Uri, fileName: string): Promise<
 async function runPython(
   phase: string,
   inputPath: string,
-  updatedFeatureText?: string
+  updatedFeatureText?: string,
+  token?: vscode.CancellationToken
 ): Promise<BDDResult> {
   const pythonPath = await getPythonPath();
 
@@ -105,6 +106,13 @@ async function runPython(
       },
     });
 
+    if (token) {
+      token.onCancellationRequested(() => {
+        vscode.window.showInformationMessage("⛔ User cancelled — killing process...");
+        python.kill("SIGKILL");
+      });
+    }
+
     let output = "";
     let errorOutput = "";
 
@@ -138,8 +146,8 @@ async function runPython(
 /**
  * Generates BDD test cases by analyzing the codebase
  */
-export async function generateTests(workspacePath: string) {
-  return runPython("generate", workspacePath);
+export async function generateTests(workspacePath: string, token?: vscode.CancellationToken) {
+  return runPython("generate", workspacePath, undefined, token);
 }
 
 /**
@@ -188,6 +196,7 @@ export function saveUpdatedFeatureFile(workspacePath: string, featureText: strin
 export async function executeTests(
   workspacePath: string,
   updatedFeatureText?: string,
+  token?: vscode.CancellationToken
 ) {
-  return runPython("execute", workspacePath, updatedFeatureText);
+  return runPython("execute", workspacePath, updatedFeatureText, token);
 }
