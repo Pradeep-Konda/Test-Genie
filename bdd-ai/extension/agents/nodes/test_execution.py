@@ -269,7 +269,7 @@ class TestExecutionNode:
             "</head><body>",
             f"<h2>API Test Execution Report</h2><p>Generated: {timestamp}</p>",
             f"<h3>Test Coverage: {coverage:.2f}%</h3>",
-            "<table><tr><th>Scenario</th><th>Request Body</th><th>Response</th><th>Status Code</th><th>HTTP Request</th><th>Method</th></tr>"
+            "<table><tr><th>S.No</th><th>Scenario</th><th>Request Body</th><th>Response</th><th>Status Code</th><th>HTTP Request</th><th>Method</th></tr>"
         ]
 
         for idx, r in enumerate(results):
@@ -286,6 +286,7 @@ class TestExecutionNode:
             method = r.get("method", "N/A")
             html_output.append(
                 f"<tr>"
+                f"<td>{idx + 1}</td>"
                 f"<td>{scenario}</td>"
                 f"<td><code>{request_body}</code></td>"
                 f"<td>{html.escape(str(status))}</td>"
