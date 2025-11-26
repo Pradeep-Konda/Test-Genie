@@ -131,7 +131,7 @@ async function runPython(
     python.on("close", (code) => {
       console.log("📤 Python process exited with code:", code);
       if (code !== 0) {
-        reject(new Error(errorOutput || "Python script failed"));
+        reject(new Error(errorOutput || output ||"Python script failed"));
       } else {
         try {
           resolve(JSON.parse(output));
