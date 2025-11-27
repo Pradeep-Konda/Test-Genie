@@ -120,6 +120,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
         } finally {
           isGenerating = false;
+          vscode.commands.executeCommand("featureExplorer.refresh");
         }
       }
     );
@@ -166,6 +167,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
           } finally {
             isRunningTests = false; // 🔓 unlock
+            vscode.commands.executeCommand("featureExplorer.refresh");
           }
         }
       );
