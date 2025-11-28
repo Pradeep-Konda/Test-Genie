@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.fileExists = fileExists;
 exports.generateTests = generateTests;
 exports.saveUpdatedFeatureFile = saveUpdatedFeatureFile;
 exports.executeTests = executeTests;
@@ -66,10 +67,20 @@ async function getPythonPath() {
         return "python";
     }
 }
+async function fileExists(dirUri, fileName) {
+    const fileUri = vscode.Uri.joinPath(dirUri, fileName);
+    try {
+        await vscode.workspace.fs.stat(fileUri);
+        return true;
+    }
+    catch (error) {
+        return false; // stat throws if file not found
+    }
+}
 /**
  * Run the Python backend with specified phase ("generate" or "execute")
  */
-async function runPython(phase, inputPath, updatedFeatureText, analysis) {
+async function runPython(phase, inputPath, updatedFeatureText, token) {
     const pythonPath = await getPythonPath();
     // Use absolute path from installed extension root
     const extension = vscode.extensions.getExtension("TestGenie.vscode-bdd-ai");
@@ -78,19 +89,27 @@ async function runPython(phase, inputPath, updatedFeatureText, analysis) {
     const openaiApiKey = process.env.OPENAI_API_KEY ||
         vscode.workspace.getConfiguration("bddai").get("openaiApiKey") ||
         "";
+    const model = vscode.workspace.getConfiguration("bddai").get("model") || "gpt-4.1";
     // Debug info
     console.log("🐍 Python Path:", pythonPath);
     console.log("📄 Script Path:", scriptPath);
     console.log("📦 Exists:", fs.existsSync(scriptPath));
     console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
+    if (phase === "generate") {
+        const exists = await fileExists(vscode.Uri.file(inputPath + "/output"), "openapi.yaml");
+        if (exists) {
+            vscode.window.showInformationMessage("Found openapi.yaml in the workspace!");
+        }
+        else {
+            vscode.window.showWarningMessage("OpenAPI spec (openapi.yaml) not found!, generating using agent.");
+        }
+    }
     return new Promise((resolve, reject) => {
         // ✅ Build args safely (no undefined allowed)
         const args = [scriptPath, phase, inputPath];
         if (updatedFeatureText)
             args.push(updatedFeatureText);
-        if (analysis)
-            args.push(analysis);
-        console.log("⚙️ Running with args:", args);
+        //console.log("⚙️ Running with args:", args);
         // Final safeguard (filters out accidental undefined/null)
         const safeArgs = args.filter((a) => typeof a === "string");
         const python = (0, child_process_1.spawn)(pythonPath, safeArgs, {
@@ -98,8 +117,15 @@ async function runPython(phase, inputPath, updatedFeatureText, analysis) {
             env: {
                 ...process.env,
                 OPENAI_API_KEY: openaiApiKey,
+                MODEL: model,
             },
         });
+        if (token) {
+            token.onCancellationRequested(() => {
+                vscode.window.showInformationMessage("⛔ User cancelled — killing process...");
+                python.kill("SIGKILL");
+            });
+        }
         let output = "";
         let errorOutput = "";
         python.stdout.on("data", (data) => {
@@ -115,7 +141,7 @@ async function runPython(phase, inputPath, updatedFeatureText, analysis) {
         python.on("close", (code) => {
             console.log("📤 Python process exited with code:", code);
             if (code !== 0) {
-                reject(new Error(errorOutput || "Python script failed"));
+                reject(new Error(errorOutput || output || "Python script failed"));
             }
             else {
                 try {
@@ -131,8 +157,8 @@ async function runPython(phase, inputPath, updatedFeatureText, analysis) {
 /**
  * Generates BDD test cases by analyzing the codebase
  */
-async function generateTests(workspacePath) {
-    return runPython("generate", workspacePath);
+async function generateTests(workspacePath, token) {
+    return runPython("generate", workspacePath, undefined, token);
 }
 /**
  * Clears existing .feature files in outputDir
@@ -173,7 +199,7 @@ function saveUpdatedFeatureFile(workspacePath, featureText) {
 /**
  * Executes BDD tests from workspace (after ensuring updated file is written)
  */
-async function executeTests(workspacePath, updatedFeatureText, analysis) {
-    return runPython("execute", workspacePath, updatedFeatureText, analysis);
+async function executeTests(workspacePath, updatedFeatureText, token) {
+    return runPython("execute", workspacePath, updatedFeatureText, token);
 }
 //# sourceMappingURL=api.js.map

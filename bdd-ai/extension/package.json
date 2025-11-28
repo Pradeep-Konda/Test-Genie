@@ -55,6 +55,12 @@
           "type": "string",
           "default": "",
           "description": "Enter your OpenAI API key here (used by Python backend)"
+        },
+        "model": {
+          "type": "string",
+          "default": "gpt-4.1",
+          "description": "Select the OpenAI model to use for test generation",
+          "enum": ["gpt-4", "gpt-3.5-turbo"]
         }
       }
     }

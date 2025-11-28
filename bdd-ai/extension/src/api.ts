@@ -69,6 +69,7 @@ async function runPython(
     process.env.OPENAI_API_KEY ||
     (vscode.workspace.getConfiguration("bddai").get("openaiApiKey") as string) ||
     "";
+  const model = vscode.workspace.getConfiguration("bddai").get("model") as string || "gpt-4.1";
 
   // Debug info
   console.log("🐍 Python Path:", pythonPath);
@@ -103,6 +104,7 @@ async function runPython(
       env: {
         ...process.env,
         OPENAI_API_KEY: openaiApiKey,
+        MODEL: model,
       },
     });
 

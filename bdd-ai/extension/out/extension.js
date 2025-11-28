@@ -40,6 +40,8 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const api_1 = require("./api");
 const panel_1 = require("./panel");
+let isGenerating = false;
+let isRunningTests = false;
 function activate(context) {
     function copyFolderRecursiveSync(src, dest) {
         if (!fs.existsSync(dest)) {
@@ -86,7 +88,6 @@ function activate(context) {
             const versionsDir = path.join(workspacePath, "Versions");
             if (!fs.existsSync(versionsDir))
                 fs.mkdirSync(versionsDir);
-            // Create timestamped folder
             const timestamp = getFormattedTimestamp();
             const versionFolder = path.join(versionsDir, `version_${timestamp}`);
             fs.mkdirSync(versionFolder);
@@ -97,37 +98,85 @@ function activate(context) {
             vscode.window.showErrorMessage("❌ Failed to save version: " + err.message);
         }
     });
-    // 🧩 Command to generate tests
+    // 🧩 Generate Tests
     const generateCmd = vscode.commands.registerCommand("extension.generateBDD", async () => {
+        if (isGenerating) {
+            vscode.window.showWarningMessage("⚠️ BDD Generation is already running.");
+            return;
+        }
+        isGenerating = true;
         const workspace = vscode.workspace.workspaceFolders?.[0];
         if (!workspace) {
             vscode.window.showErrorMessage("❌ No workspace folder open!");
             return;
         }
         const workspacePath = workspace.uri.fsPath;
-        vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "🔍 Generating BDD Tests..." }, async () => {
+        vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
+            title: "🔍 Generating BDD Tests...",
+            cancellable: true
+        }, async (progress, token) => {
             try {
-                const result = await (0, api_1.generateTests)(workspacePath);
+                const result = await (0, api_1.generateTests)(workspacePath, token);
                 const panel = panel_1.BDDPanel.show(result.feature_text || "No tests generated");
-                panel.onDidClickRun(async () => {
-                    const updated = panel.getFeatureText();
-                    vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "🏃 Running Tests..." }, async () => {
-                        const exec = await (0, api_1.executeTests)(workspacePath, updated, result.analysis || "No Specifications file");
-                        vscode.window.showInformationMessage("✅ Test Execution Complete!");
-                        panel.showOutput(exec.execution_output || "No output");
-                    });
-                });
             }
             catch (err) {
-                vscode.window.showErrorMessage(`❌ Error: ${err.message}`);
+                if (token.isCancellationRequested) {
+                    console.log("⛔ BDD test generation cancelled.");
+                }
+                else {
+                    vscode.window.showErrorMessage(`❌ Error generating tests: ${err.message}`);
+                }
+            }
+            finally {
+                isGenerating = false;
+                vscode.commands.executeCommand("featureExplorer.refresh");
             }
         });
     });
-    // 🌳 Register Feature Explorer
+    // Direct execution from panel
+    const executeBDD = vscode.commands.registerCommand("extension.executeBDD", async (updated, panel) => {
+        // 🔒 Prevent running twice
+        if (isRunningTests) {
+            vscode.window.showWarningMessage("⚠️ Tests are already running.");
+            return;
+        }
+        isRunningTests = true;
+        const workspace = vscode.workspace.workspaceFolders?.[0];
+        if (!workspace) {
+            vscode.window.showErrorMessage("❌ No workspace folder open!");
+            isRunningTests = false;
+            return;
+        }
+        const workspacePath = workspace.uri.fsPath;
+        vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
+            title: "🏃 Running BDD Tests...",
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                const exec = await (0, api_1.executeTests)(workspacePath, updated || "No Specifications file", token);
+                vscode.window.showInformationMessage("✅ Test Execution Complete!");
+                panel.showOutput(exec.execution_output || "No output");
+            }
+            catch (err) {
+                if (token.isCancellationRequested) {
+                    console.log("⛔ BDD test execution cancelled.");
+                }
+                else {
+                    vscode.window.showErrorMessage(`❌ Error executing tests: ${err.message}`);
+                }
+            }
+            finally {
+                isRunningTests = false; // 🔓 unlock
+                vscode.commands.executeCommand("featureExplorer.refresh");
+            }
+        });
+    });
+    // 🌳 Feature Explorer
     const provider = new FeatureTreeDataProvider();
-    const treeView = vscode.window.createTreeView("featureExplorer", { treeDataProvider: provider });
+    const treeView = vscode.window.createTreeView("featureExplorer", {
+        treeDataProvider: provider,
+    });
     vscode.workspace.onDidChangeWorkspaceFolders(() => provider.refresh());
-    // 📂 Handle selection → show in panel
     treeView.onDidChangeSelection(async (event) => {
         const item = event.selection[0];
         if (!item)
@@ -139,21 +188,20 @@ function activate(context) {
         if (stat.isFile() && fullPath.endsWith(".feature")) {
             const text = fs.readFileSync(fullPath, "utf-8");
             const panel = panel_1.BDDPanel.show(text);
-            panel.setFilePath(fullPath); // <-- Add this line
+            panel.setFilePath(fullPath);
         }
         else if (stat.isDirectory()) {
             const features = getFeatureFiles(fullPath);
-            const combined = features.map((f) => fs.readFileSync(f, "utf-8")).join("\n\n");
+            const combined = features
+                .map((f) => fs.readFileSync(f, "utf-8"))
+                .join("\n\n");
             panel_1.BDDPanel.show(combined || "📁 No .feature files found.");
         }
     });
-    // 🧹 Register refresh command
     vscode.commands.registerCommand("featureExplorer.refresh", () => provider.refresh());
-    // context.subscriptions.push(generateCmd, treeView);
-    context.subscriptions.push(generateCmd, saveFileCmd, saveVersionFolderCmd, // <-- REQUIRED
-    treeView);
+    context.subscriptions.push(generateCmd, saveFileCmd, saveVersionFolderCmd, treeView, executeBDD);
 }
-/** 🔍 Recursively collect all .feature files */
+// Recursively get .feature files
 function getFeatureFiles(dir) {
     let results = [];
     if (!fs.existsSync(dir))
@@ -168,7 +216,7 @@ function getFeatureFiles(dir) {
     }
     return results;
 }
-/** 🌳 Custom provider for Feature Explorer */
+// Tree Provider
 class FeatureTreeDataProvider {
     constructor() {
         this._onDidChangeTreeData = new vscode.EventEmitter();
@@ -184,7 +232,9 @@ class FeatureTreeDataProvider {
         const workspace = vscode.workspace.workspaceFolders?.[0];
         if (!workspace)
             return [];
-        const baseDir = element ? element.resourceUri.fsPath : workspace.uri.fsPath;
+        const baseDir = element
+            ? element.resourceUri.fsPath
+            : workspace.uri.fsPath;
         if (!fs.existsSync(baseDir))
             return [];
         const items = [];
@@ -211,7 +261,7 @@ class FeatureTreeDataProvider {
             item.tooltip = `${full}\n${isDir ? "📁 Folder" : "🧩 Feature File"}${!isDir ? `\nSize: ${(stat.size / 1024).toFixed(1)} KB` : ""}`;
             item.iconPath = isDir
                 ? new vscode.ThemeIcon("folder-library")
-                : new vscode.ThemeIcon("symbol-keyword"); // Gherkin-like icon
+                : new vscode.ThemeIcon("symbol-keyword");
             item.contextValue = isDir ? "folder" : "feature";
             items.push(item);
         }
