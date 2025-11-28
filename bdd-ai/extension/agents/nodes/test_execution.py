@@ -29,9 +29,10 @@ class TestExecutionNode:
     def __init__(self, features_dir: str = "bdd_tests"):
         load_dotenv()
         self.features_dir = features_dir
+        model = os.getenv("MODEL", "gpt-4.1")
 
         self.llm = ChatOpenAI(
-            model="gpt-4.1",
+            model=model,
             temperature=0
         )
 
@@ -181,9 +182,6 @@ class TestExecutionNode:
         try:
             method = method.upper()
             url = (url if url.startswith("http") else f"{base_url.rstrip('/')}/{url.lstrip('/')}")
-            #print(f"Executing {method} request to {url} with body: {body}")
-            # if url.startswith("/"):
-            #     url = f"http://localhost:5000{url}"
 
             headers = {"Content-Type": "application/json"}
 

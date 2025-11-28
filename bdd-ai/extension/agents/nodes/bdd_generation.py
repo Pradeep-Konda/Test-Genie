@@ -46,9 +46,10 @@ class BDDGenerationNode:
     def __init__(self, output_dir: str = "bdd_tests/features"):
         load_dotenv()
         self.output_dir = output_dir
+        model = os.getenv("MODEL", "gpt-4.1")
 
         try:
-            self.llm = ChatOpenAI(model="gpt-4.1", temperature=0) if ChatOpenAI else None
+            self.llm = ChatOpenAI(model=model, temperature=0) if ChatOpenAI else None
             self.tools = []
 
             # Optional tool – currently we mostly call the LLM directly

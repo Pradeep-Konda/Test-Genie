@@ -11,9 +11,10 @@ from langchain_openai import ChatOpenAI
 class CodeAnalysisNode:
     def __init__(self):
         load_dotenv()
+        model = os.getenv("MODEL", "gpt-4.1")
 
         self.llm = ChatOpenAI(
-            model="gpt-4.1",
+            model=model,
             temperature=0,
         )
 
