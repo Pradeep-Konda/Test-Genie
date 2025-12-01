@@ -336,6 +336,8 @@ class TestExecutionNode:
             f.write(full_html)
 
         return json.dumps({"execution_output": full_html})
+    
+    
     # ------------------------------------------------------------------
     # CORE EXECUTION
     # ------------------------------------------------------------------
@@ -349,40 +351,57 @@ class TestExecutionNode:
                 else:
                     state.analysis = json.load(f)
 
-            scenarios = [s.strip() for s in re.split(r"\bScenario:", state.feature_text) if s.strip()]
+            # Split using MULTILINE regex inside the pattern
+            raw_scenarios = re.split(r"(?m)^\s*Scenario:\s*", state.feature_text)
+
+            scenarios = []
+            for chunk in raw_scenarios:
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+
+                # First line = scenario name
+                lines = chunk.split("\n")
+                scenario_name = lines[0].strip()
+
+                # Rest of lines form the body (Given/When/Then)
+                scenario_body = "\n".join(lines[1:]).strip()
+
+                # Rebuild scenario in proper gherkin format
+                full_scenario = f"Scenario: {scenario_name}\n{scenario_body}"
+
+                scenarios.append(full_scenario)
+
             all_results = []
             all_curls = []
-
-            #print(f"Total scenarios to execute: {len(scenarios)}")
 
             for i in range(0, len(scenarios), batch_size):
                 batch = scenarios[i:i + batch_size]
 
                 messages = [
-                            SystemMessage(content=self.system_prompt),
-                            HumanMessage(
-                                content=(
-                                    "Execute these scenarios and return only JSON.\n"
-                                    "\n"
-                                    "----- OPENAPI SPEC START -----\n"
-                                    f"{state.analysis}\n"
-                                    "----- OPENAPI SPEC END -----\n"
-                                    "\n"
-                                    "----- SCENARIOS START -----\n"
-                                    + "\n\n".join(batch) +
-                                    "\n----- SCENARIOS END -----"
-                                )
-                            ),
-                        ]
-
-
+                    SystemMessage(content=self.system_prompt),
+                    HumanMessage(
+                        content=(
+                            "Execute these scenarios and return only JSON.\n"
+                            "\n"
+                            "----- OPENAPI SPEC START -----\n"
+                            f"{state.analysis}\n"
+                            "----- OPENAPI SPEC END -----\n"
+                            "\n"
+                            "----- SCENARIOS START -----\n"
+                            + "\n\n".join(batch) +
+                            "\n----- SCENARIOS END -----"
+                        )
+                    ),
+                ]
 
                 result = self.agent.invoke({"messages": messages})
 
                 if isinstance(result, dict) and "messages" in result:
                     ai_messages = [
                         msg for msg in result["messages"]
-                        if getattr(msg, "type", None) == "ai" or msg.__class__.__name__ == "AIMessage"
+                        if getattr(msg, "type", None) == "ai"
+                        or msg.__class__.__name__ == "AIMessage"
                     ]
                     content = ai_messages[-1].content.strip() if ai_messages else ""
                 elif hasattr(result, "content"):
@@ -390,16 +409,18 @@ class TestExecutionNode:
                 elif isinstance(result, str):
                     content = result.strip()
                 else:
-                    content = str(result or "").strip()
-                
-                #print("Agent Response Content:", content)
+                    content = str(result).strip()
 
-                # Extract JSON safely
+                # Fix: Extract JSON safely even if extra text is added
                 try:
                     parsed = json.loads(content)
                 except:
+                    # Greedy JSON extractor: handles nested content reliably
                     match = re.search(r"\{(?:[^{}]|(?R))*\}", content, re.DOTALL)
-                    parsed = json.loads(match.group(0)) if match else None
+                    if not match:
+                        parsed = None
+                    else:
+                        parsed = json.loads(match.group(0))
 
                 if not parsed:
                     all_results.append({"error": "Agent returned invalid JSON"})
@@ -417,8 +438,6 @@ class TestExecutionNode:
             state.execution_output = json.loads(report_json).get("execution_output")
 
         except Exception as e:
-            state.execution_output = {
-                "error": str(e)
-            }
+            state.execution_output = {"error": str(e)}
 
         return state
