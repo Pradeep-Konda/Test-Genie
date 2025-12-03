@@ -351,8 +351,19 @@ class TestExecutionNode:
                 else:
                     state.analysis = json.load(f)
 
+            # Remove Feature: lines
+            cleaned_text = re.sub(r"^Feature:.*$", "", state.feature_text, flags=re.MULTILINE)
+
+            # Remove tags like @smoke @edge @performance
+            cleaned_text = re.sub(r"^\s*@[\w-]+(?:\s*@[\w-]+)*", "", cleaned_text, flags=re.MULTILINE)
+
+            # Remove comments starting with "#"
+            cleaned_text = re.sub(r"^\s*#.*$", "", cleaned_text, flags=re.MULTILINE)
+
+            cleaned_text = re.sub(r"\n{2,}", "\n", cleaned_text).strip()
+
             # Split using MULTILINE regex inside the pattern
-            raw_scenarios = re.split(r"(?m)^\s*Scenario:\s*", state.feature_text)
+            raw_scenarios = re.split(r"(?m)^\s*Scenario:\s*", cleaned_text)
 
             scenarios = []
             for chunk in raw_scenarios:
@@ -371,7 +382,6 @@ class TestExecutionNode:
                 full_scenario = f"Scenario: {scenario_name}\n{scenario_body}"
 
                 scenarios.append(full_scenario)
-
             all_results = []
             all_curls = []
 
