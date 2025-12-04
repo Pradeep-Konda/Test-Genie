@@ -57,7 +57,13 @@ if __name__ == "__main__":
                 "feature_text": gen_state.feature_text
             }))
         elif phase == "execute":
-            state.feature_text = sys.argv[3]
+            feature_temp = sys.argv[3]
+            if os.path.exists(feature_temp):
+            # Read and return existing OpenAPI spec
+                with open(feature_temp, "r", encoding="utf-8") as f:
+                    updatedFeatureText = f.read()
+                state.feature_text = updatedFeatureText
+
             final_state = run_execution_phase(state)
             print(json.dumps({
                 "execution_output": final_state.execution_output

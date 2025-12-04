@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as vscode from "vscode";
 import { exists } from "fs";
+import * as os from "os";
 
 export interface BDDResult {
   analysis?: string;
@@ -49,13 +50,21 @@ export async function fileExists(dirUri: vscode.Uri, fileName: string): Promise<
   }
 }
 
+function writeTempFeatureFile(content: string): string {
+  const tmpDir = os.tmpdir();
+  const filename = "feature_temp.feature";
+  const filePath = path.join(tmpDir, filename);
+  fs.writeFileSync(filePath, content, "utf8");
+  return filePath;
+}
+
 /**
  * Run the Python backend with specified phase ("generate" or "execute")
  */
 async function runPython(
   phase: string,
   inputPath: string,
-  updatedFeatureText?: string,
+  updatedFeatureTextPath?: string,
   token?: vscode.CancellationToken
 ): Promise<BDDResult> {
   const pythonPath = await getPythonPath();
@@ -74,7 +83,6 @@ async function runPython(
   // Debug info
   console.log("🐍 Python Path:", pythonPath);
   console.log("📄 Script Path:", scriptPath);
-  console.log("📦 Exists:", fs.existsSync(scriptPath));
   console.log("🔑 OpenAI Key Set:", openaiApiKey ? "✅ Yes" : "❌ No");
 
   
@@ -84,7 +92,7 @@ async function runPython(
         vscode.window.showInformationMessage("Found openapi.yaml in the workspace!");
     }
     else{
-        vscode.window.showWarningMessage("OpenAPI spec (openapi.yaml) not found!, generating using agent.");
+        vscode.window.showWarningMessage("OpenAPI spec (openapi.yaml) not found! generating using agent.");
     }
   }
 
@@ -92,7 +100,7 @@ async function runPython(
     // ✅ Build args safely (no undefined allowed)
     const args: string[] = [scriptPath, phase, inputPath];
 
-    if (updatedFeatureText) args.push(updatedFeatureText);
+    if (updatedFeatureTextPath) args.push(updatedFeatureTextPath);
     
     //console.log("⚙️ Running with args:", args);
 
@@ -200,5 +208,25 @@ export async function executeTests(
   updatedFeatureText?: string,
   token?: vscode.CancellationToken
 ) {
-  return runPython("execute", workspacePath, updatedFeatureText, token);
+  let tempFilePath: string | undefined;
+
+  try {
+    if (updatedFeatureText) {
+      // Save text to a temporary file
+      tempFilePath = writeTempFeatureFile(updatedFeatureText);
+    }
+
+    // Always pass only file path to Python
+    const featureArg = tempFilePath || "";
+
+    const result = await runPython("execute", workspacePath, featureArg, token);
+
+    return result;
+
+  } finally {
+    // Cleanup temp file after execution
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+  }
 }
