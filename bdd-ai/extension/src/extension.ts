@@ -111,6 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
         try {
           const result = await generateTests(workspacePath, token);
           const panel = BDDPanel.show(result.feature_text || "No tests generated");
+          vscode.window.showInformationMessage("✅ Feature Generation Complete!");
 
         } catch (err: any) {
           if (token.isCancellationRequested) {
