@@ -471,10 +471,10 @@ class TestExecutionNode:
                     state.analysis = json.load(f)
 
             # Remove Feature: lines
-            cleaned_text = re.sub(r"^Feature:.*$", "", state.feature_text, flags=re.MULTILINE)
+            cleaned_text = re.sub(r"^\s*Feature:.*$", "", state.feature_text, flags=re.MULTILINE)
 
             # Remove tags like @smoke @edge @performance
-            cleaned_text = re.sub(r"^\s*@[\w-]+(?:\s*@[\w-]+)*", "", cleaned_text, flags=re.MULTILINE)
+            cleaned_text = re.sub(r"^\s*(?:@\w[\w-]*\s*)+", "", cleaned_text, flags=re.MULTILINE)
 
             # Remove comments starting with "#"
             cleaned_text = re.sub(r"^\s*#.*$", "", cleaned_text, flags=re.MULTILINE)
