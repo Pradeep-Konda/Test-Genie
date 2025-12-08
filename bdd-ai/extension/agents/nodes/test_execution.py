@@ -42,45 +42,99 @@ class TestExecutionNode:
         self.system_prompt = (
             "You are an API Test Execution Agent.\n"
             "\n"
+            "Your job is to:\n"
+            "1) Execute API calls for Gherkin scenarios using the TestExecutor tool.\n"
+            "2) Read all THEN steps.\n"
+            "3) Determine PASS/FAIL strictly based on status codes and response body.\n"
+            "4) Return results ONLY in the required JSON format.\n"
+            "\n"
             "Follow the rules below with ZERO deviation.\n"
             "\n"
             "====================================================\n"
-            "1. INPUT\n"
+            "1. INPUT RULES\n"
             "====================================================\n"
-            "You receive Gherkin scenarios and an OpenAPI YAML specification.\n"
+            "You receive:\n"
+            "- A set of Gherkin scenarios.\n"
+            "- An OpenAPI YAML specification.\n"
             "\n"
-            "- Extract BASE_URL from the OpenAPI 'servers:' section.\n"
-            "- Use ONLY the FIRST server URL.\n"
-            "- For any relative path like '/api/users', prepend BASE_URL.\n"
+            "From the OpenAPI spec:\n"
+            "- Read the first server URL from 'servers:' → this is BASE_URL.\n"
+            "- For any relative path (e.g., '/api/users'), prepend BASE_URL.\n"
             "- If a path already starts with http:// or https://, use it as-is.\n"
+            "- NEVER invent, modify, or correct URLs.\n"
             "\n"
             "====================================================\n"
-            "2. EXECUTION\n"
+            "2. EXECUTION BEHAVIOR\n"
             "====================================================\n"
-            "- For every When step → call TestExecutor.\n"
-            "- For every Then step → validate status code + response body.\n"
-            "- ALWAYS capture:\n"
-            "   • scenario name\n"
-            "   • method\n"
-            "   • final full URL\n"
-            "   • request body\n"
-            "   • response content\n"
-            "   • status code\n"
-            "   • result = 'passed' or 'failed'\n"
+            "For every scenario:\n"
+            "\n"
+            "A) WHEN STEPS\n"
+            "- Extract HTTP method, URL, and body.\n"
+            "- Call TestExecutor with these values.\n"
+            "\n"
+            "B) THEN STEPS — VALIDATION LOGIC\n"
+            "Apply ALL rules below:\n"
+            "\n"
+            "--------------------------\n"
+            "STATUS VALIDATION RULES\n"
+            "--------------------------\n"
+            "\n"
+            "1. EXACT MATCH\n"
+            "   \"the response status should be 200\"\n"
+            "   → PASS only if actual_status == 200\n"
+            "\n"
+            "2. NEGATIVE MATCH\n"
+            "   \"the response status should not be 201\"\n"
+            "   → PASS only if actual_status != 201\n"
+            "\n"
+            "3. MULTIPLE OPTIONS (OR)\n"
+            "   \"the response status should be 200 or 204\"\n"
+            "   → PASS if actual_status matches ANY listed value\n"
+            "\n"
+            "4. RANGE MATCH\n"
+            "   \"the response status should be in range 200 to 299\"\n"
+            "   → PASS if 200 ≤ actual_status ≤ 299\n"
+            "\n"
+            "5. SUCCESS / FAIL KEYWORDS\n"
+            "   \"the response should succeed\" → treat as 200–299\n"
+            "   \"the response should fail\" → treat as 400–599\n"
+            "\n"
+            "If no status expectation appears:\n"
+            "→ Status check is automatically PASSED.\n"
+            "\n"
+            "--------------------------\n"
+            "BODY VALIDATION RULES\n"
+            "--------------------------\n"
+            "\n"
+            "1. \"the response should contain 'xyz'\"\n"
+            "   → PASS only if the response body contains substring xyz\n"
+            "\n"
+            "2. \"the response should not contain 'error'\"\n"
+            "   → PASS only if substring does NOT appear in body\n"
+            "\n"
+            "Body validation FAILS only if a Then step explicitly requires checking.\n"
+            "\n"
+            "--------------------------\n"
+            "FINAL RESULT DECISION\n"
+            "--------------------------\n"
+            "A scenario is:\n"
+            "- PASSED only if ALL checks (status + body) pass\n"
+            "- FAILED if ANY check fails\n"
             "\n"
             "====================================================\n"
             "3. STRICT OUTPUT FORMAT (MANDATORY)\n"
             "====================================================\n"
-            "You MUST return ONLY JSON in EXACTLY the following structure:\n"
+            "\n"
+            "You MUST output ONLY this JSON structure:\n"
             "\n"
             "{\n"
             "  \"results\": [\n"
             "    {\n"
             "      \"scenario\": string,\n"
             "      \"request_body\": string or null,\n"
-            "      \"url\": string,          # FULL FINAL URL — ALWAYS REQUIRED\n"
-            "      \"method\": string,       # GET/POST/PUT/DELETE — ALWAYS REQUIRED\n"
-            "      \"status\": number,       # HTTP STATUS CODE — ALWAYS REQUIRED\n"
+            "      \"url\": string,\n"
+            "      \"method\": string,\n"
+            "      \"status\": number,\n"
             "      \"response\": object or string,\n"
             "      \"result\": \"passed\" | \"failed\"\n"
             "    }\n"
@@ -95,8 +149,11 @@ class TestExecutionNode:
             "- NEVER rewrite URLs.\n"
             "- NEVER output explanation, markdown, or natural language.\n"
             "- NEVER output anything outside JSON.\n"
-            "- If an error occurs, output a valid JSON object with result='failed'.\n"
+            "- NEVER include explanations or markdown.\n"
+            "- NEVER rename fields.\n"
+            "- If ANY error occurs, output ONE result with \"result\": \"failed\".\n"
         )
+
 
         # ---------------------
         # Tools
@@ -288,26 +345,58 @@ class TestExecutionNode:
 
         html_output = [
             "<html><head><title>API Test Report</title>",
-            "<style>body{font-family:Arial;}table{width:100%;border-collapse:collapse;}"
-            "th,td{border:1px solid #ccc;padding:6px;}</style>",
-            "</head><body>",
-            f"<h2>API Test Execution Report</h2><p>Generated: {timestamp}</p>",
+            "<style>",
+            "body{font-family:Arial;}table{width:100%;border-collapse:collapse;}",
+            "th,td{border:1px solid #ccc;padding:6px;}",
+            ".passed{color:green;font-weight:bold;}",
+            ".failed{color:red;font-weight:bold;}",
+            ".body{font-color:white;}",
+            "</style>",
+            "</head><body id ='body'>",
+
+            "<h2>API Test Execution Report</h2>",
+            f"<p>Generated: {timestamp}</p>",
             f"<h3>Test Coverage: {coverage:.2f}%</h3>",
-            "<table><tr><th>S.No</th><th>Scenario</th><th>Request Body</th><th>Response</th><th>Status Code</th><th>HTTP Request</th><th>Method</th></tr>"
+
+            # --------------------------------
+            # ⭐ TABLE STARTS HERE
+            # --------------------------------
+            "<table id='resultsTable'>",
+
+            "<tr>"
+            "<th>S.No</th>"
+            "<th>Scenario</th>"
+            "<th>Request Body</th>"
+            "<th>Response</th>"
+            "<th>Status Code</th>"
+            "<th>HTTP Request</th>"
+            "<th>Method</th>"
+            "<th>"
+            "Result<br>"
+            "<select id='resultFilter' onchange='filterResults()'>"
+            "<option value='all'>All</option>"
+            "<option value='passed'>Passed</option>"
+            "<option value='failed'>Failed</option>"
+            "</select>"
+            "</th>"
+            "</tr>",
         ]
 
+        # --------------------------------
+        # TABLE ROWS
+        # --------------------------------
         for idx, r in enumerate(results):
             scenario = r.get("scenario", "N/A")
             request_body = r.get("request_body", "N/A")
 
             status = r.get("response", r.get("error", "N/A"))
-
-            # Determine status code
             status_code = r.get("status", "N/A")
-
-            # Each scenario uses matching index from curl_commands
             http_request = r.get("url", "N/A")
             method = r.get("method", "N/A")
+
+            result_flag = r.get("result", "N/A")
+            color = "green" if result_flag == "passed" else "red"
+
             html_output.append(
                 f"<tr>"
                 f"<td>{idx + 1}</td>"
@@ -317,25 +406,55 @@ class TestExecutionNode:
                 f"<td>{status_code}</td>"
                 f"<td><code>{http_request}</code></td>"
                 f"<td>{method}</td>"
+                f"<td style='font-weight:bold; color:{color}'>{result_flag.upper()}</td>"
                 f"</tr>"
             )
 
-        html_output.append("</table></body></html>")
+        # Close table
+        html_output.append("</table>")
 
-        # --- Display uncovered endpoints if any ---
+        # --------------------------------
+        # ⭐ JAVASCRIPT FILTER
+        # --------------------------------
+        html_output.append("""
+        <script>
+        function filterResults() {
+            let filter = document.getElementById('resultFilter').value;
+            let table = document.getElementById('resultsTable');
+            let rows = table.getElementsByTagName('tr');
+
+            for (let i = 1; i < rows.length; i++) {
+                let resultCell = rows[i].getElementsByTagName('td')[7];
+                if (!resultCell) continue;
+
+                let result = resultCell.textContent.trim().toLowerCase();
+
+                if (filter === 'all' || filter === result) {
+                    rows[i].style.display = '';
+                } else {
+                    rows[i].style.display = 'none';
+                }
+            }
+        }
+        </script>
+        """)
+
+        # --------------------------------
+        # Uncovered endpoints
+        # --------------------------------
         if uncovered:
             html_output.append("<h2>Uncovered Endpoints from OpenAPI Spec</h2><ul>")
             for ep in uncovered:
                 html_output.append(f"<li>{ep}</li>")
             html_output.append("</ul>")
 
-       
         full_html = "\n".join(html_output)
 
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(full_html)
 
         return json.dumps({"execution_output": full_html})
+
     
     
     # ------------------------------------------------------------------
@@ -381,7 +500,14 @@ class TestExecutionNode:
                 # Rebuild scenario in proper gherkin format
                 full_scenario = f"Scenario: {scenario_name}\n{scenario_body}"
 
-                scenarios.append(full_scenario)
+
+                scenarios.append({
+                    "name": scenario_name,
+                    "text": full_scenario,
+                })
+
+
+
             all_results = []
             all_curls = []
 
@@ -399,7 +525,7 @@ class TestExecutionNode:
                             "----- OPENAPI SPEC END -----\n"
                             "\n"
                             "----- SCENARIOS START -----\n"
-                            + "\n\n".join(batch) +
+                            + "\n\n".join([s["text"] for s in batch]) +
                             "\n----- SCENARIOS END -----"
                         )
                     ),
@@ -436,7 +562,16 @@ class TestExecutionNode:
                     all_results.append({"error": "Agent returned invalid JSON"})
                     continue
 
-                all_results.extend(parsed.get("results", []))
+                #all_results.extend(parsed.get("results", []))
+
+                returned_results = parsed.get("results", [])
+
+                for idx, r in enumerate(returned_results):
+
+                    all_results.append(r)
+
+
+
                 all_curls.extend(parsed.get("curl_commands", []))
 
             final_input = json.dumps({

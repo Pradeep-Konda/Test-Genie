@@ -256,10 +256,66 @@ export class BDDPanel {
           window.addEventListener('message', (event) => {
             const message = event.data;
             if (message.type === 'output') {
-              outputEl.innerHTML = message.output;
-              outputEl.scrollTop = outputEl.scrollHeight;
+              const iframeHtml = '<iframe id="reportFrame" style="width:100%; height:100%; border:none;"></iframe>';
+              outputEl.innerHTML = iframeHtml;
+
+              const iframe = document.getElementById('reportFrame');
+
+              // CSS we want to force inside iframe
+              const forcedCss =
+                '<style>' +
+                'html, body, * { color: white !important; background-color: transparent !important; }' +
+                'select { color: black !important; background-color: white !important; }' +
+                'option { color: black !important; background-color: white !important; }' +
+                '</style>';
+
+
+              const out = (message.output || '').toString().trim();
+
+              try {
+                // If output looks like a URL (starts with http/https), load it by src
+                if (/^https?:\\/\\//i.test(out)) {
+                  // NOTE: cross-origin pages cannot be styled from the parent. If the server returns a URL,
+                  // you cannot inject CSS unless the page is same-origin or the server itself includes the CSS.
+                  iframe.src = out;
+                } else {
+                  // Insert style into the HTML string itself so it's present from first paint.
+                  let modified = out;
+                  if (/<\\/head\\s*>/i.test(modified)) {
+                    modified = modified.replace(/<\\/head\\s*>/i, forcedCss + '</head>');
+                  } else if (/^\\s*<!DOCTYPE/i.test(modified) || /^\\s*<html/i.test(modified)) {
+                    // Page has html but no head close — try to inject head
+                    modified = modified.replace(/<html[^>]*>/i, (m) => m + '<head>' + forcedCss + '</head>');
+                  } else {
+                    // Fallback: just prepend a head with style
+                    modified = '<head>' + forcedCss + '</head>' + modified;
+                  }
+
+                  // Finally set srcdoc (this will render the modified HTML including the forced CSS)
+                  iframe.srcdoc = modified;
+                }
+              } catch (err) {
+                // Fallback: set srcdoc unmodified and try a late injection (may fail if cross-origin)
+                console.error('iframe injection error', err);
+                iframe.srcdoc = out;
+                iframe.onload = () => {
+                  try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    if (iframeDoc && iframeDoc.head) {
+                      const style = iframeDoc.createElement('style');
+                      style.innerHTML = 'html, body, * { color: white !important; background-color: transparent !important; }';
+                      iframeDoc.head.appendChild(style);
+                    }
+                  } catch (e) {
+                    console.error('late iframe style injection failed', e);
+                  }
+                };
+              }
             }
-          });
+          
+
+        });
+
         </script>
       </body>
       </html>
