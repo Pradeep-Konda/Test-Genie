@@ -1,9 +1,11 @@
 import os
 import re
+import sys
 import json
 import subprocess
 import requests
 from datetime import datetime
+from urllib.parse import quote
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
@@ -15,6 +17,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 import html
+from .auth_handler import AuthHandler
 
 
 
@@ -30,6 +33,9 @@ class TestExecutionNode:
         load_dotenv()
         self.features_dir = features_dir
         model = os.getenv("MODEL", "gpt-4.1")
+        
+        # Auth handler will be initialized when __call__ is invoked with project_path
+        self.auth_handler: Optional[AuthHandler] = None
 
         self.llm = ChatOpenAI(
             model=model,
@@ -267,6 +273,18 @@ class TestExecutionNode:
             url = (url if url.startswith("http") else f"{base_url.rstrip('/')}/{url.lstrip('/')}")
 
             headers = {"Content-Type": "application/json"}
+            
+            if self.auth_handler:
+                auth_headers = self.auth_handler.get_auth_headers()
+                headers.update(auth_headers)
+                
+                # Handle API key in query params if configured
+                auth_params = self.auth_handler.get_auth_query_params()
+                if auth_params:
+                    # Append query params to URL (URL-encode values for safety)
+                    separator = "&" if "?" in url else "?"
+                    param_str = "&".join(f"{k}={quote(str(v), safe='')}" for k, v in auth_params.items())
+                    url = f"{url}{separator}{param_str}"
 
             json_body = None
             if body:
@@ -342,6 +360,11 @@ class TestExecutionNode:
 
         # --- Calculate OpenAPI coverage ---
         coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, state.analysis)
+        
+        # --- Get authentication info ---
+        auth_info = "No authentication"
+        if self.auth_handler and self.auth_handler.is_authenticated():
+            auth_info = self.auth_handler.get_auth_summary()
 
         html_output = [
             "<html><head><title>API Test Report</title>",
@@ -351,11 +374,13 @@ class TestExecutionNode:
             ".passed{color:green;font-weight:bold;}",
             ".failed{color:red;font-weight:bold;}",
             ".body{font-color:white;}",
+            ".auth-info{background:#f0f7ff;padding:10px;border-radius:5px;margin-bottom:15px;}",
             "</style>",
             "</head><body id ='body'>",
 
             "<h2>API Test Execution Report</h2>",
             f"<p>Generated: {timestamp}</p>",
+            f"<div class='auth-info'><strong>Authentication:</strong> {html.escape(auth_info)}</div>",
             f"<h3>Test Coverage: {coverage:.2f}%</h3>",
 
             # --------------------------------
@@ -462,6 +487,14 @@ class TestExecutionNode:
     # ------------------------------------------------------------------
     def __call__(self, state, batch_size: int = 5):
         try:
+            self.auth_handler = AuthHandler(state.project_path)
+            
+            # Log auth status (to stderr to not interfere with JSON output)
+            if self.auth_handler.is_authenticated():
+                print(f"[TEST] Authentication: {self.auth_handler.get_auth_summary()}", file=sys.stderr, flush=True)
+            else:
+                print("[TEST] Running tests without authentication", file=sys.stderr, flush=True)
+            
             openapi_dir = os.path.join(state.project_path, "output")
             filepath = self._find_latest_openapi_spec(openapi_dir)
             with open(filepath, "r", encoding="utf-8") as f:
