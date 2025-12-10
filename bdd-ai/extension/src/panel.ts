@@ -34,6 +34,12 @@ export class BDDPanel {
               vscode.window.showErrorMessage("❌ Cannot Run: No featureText detected.");
             }
             break;
+
+          case "generateBDD":
+            vscode.commands.executeCommand("extension.generateBDD");
+            break;
+
+
           case "save":
             if (this.currentFilePath) {
               vscode.commands.executeCommand(
@@ -210,6 +216,25 @@ export class BDDPanel {
               gap: 10px;
           }
 
+          .top-right-btn {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          padding: 6px 14px;
+          border-radius: 6px;
+          background-color: var(--vscode-button-background);
+          color: var(--vscode-button-foreground);
+          border: none;
+          cursor: pointer;
+          font-weight: bold;
+          z-index: 1000;
+        }
+
+        .top-right-btn:hover {
+          background-color: var(--vscode-button-hoverBackground);
+        }
+
+
 
           }
         </style>
@@ -217,16 +242,22 @@ export class BDDPanel {
       <body>
         <h2>Generated Test Cases</h2>
         <pre id="featureText" contenteditable="true">${escaped}</pre>
+
+        <button id="generateBddTop" class="top-right-btn">⚙ Generate BDD</button>
+
         <div class="button-row">
           <div class="left-buttons">
               <button id="runTests">▶ Run Tests</button>
           </div>
+
+          
 
           <div class="right-buttons">
               <button id="saveFeature">💾 Save</button>
               <button id="saveVersion">📦 Save Version</button>
           </div>
         </div>
+
 
         <div id="output"></div>
 
@@ -251,6 +282,9 @@ export class BDDPanel {
             vscode.postMessage({ type: 'saveVersion' });
           });
 
+          document.getElementById('generateBddTop').addEventListener('click', () => {
+            vscode.postMessage({ type: 'generateBDD' });
+        });
 
 
           window.addEventListener('message', (event) => {
