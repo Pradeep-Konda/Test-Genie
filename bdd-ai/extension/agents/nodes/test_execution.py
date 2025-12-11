@@ -5,7 +5,7 @@ import json
 import subprocess
 import requests
 from datetime import datetime
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 import html
 from .auth_handler import AuthHandler
+from .schema_validator import SchemaValidator
 
 
 
@@ -36,6 +37,9 @@ class TestExecutionNode:
         
         # Auth handler will be initialized when __call__ is invoked with project_path
         self.auth_handler: Optional[AuthHandler] = None
+        
+        # Schema validator for contract testing (initialized in __call__)
+        self.schema_validator: Optional[SchemaValidator] = None
 
         self.llm = ChatOpenAI(
             model=model,
@@ -161,9 +165,7 @@ class TestExecutionNode:
         )
 
 
-        # ---------------------
-        # Tools
-        # ---------------------
+
         self.tools = [
             StructuredTool.from_function(
                 name="TestExecutor",
@@ -178,9 +180,76 @@ class TestExecutionNode:
             system_prompt=self.system_prompt,
         )
 
-     # ------------------------------------------------------------------
-    # Tool 1: Find latest openapi spec from output
-    # ------------------------------------------------------------------
+    def _extract_endpoint_path(self, url: str) -> str:
+        """
+        Extract the endpoint path from a full URL.
+        
+        Args:
+            url: Full URL like "http://localhost:5000/api/users/123?foo=bar"
+            
+        Returns:
+            Endpoint path like "/api/users/123"
+        """
+        try:
+            parsed = urlparse(url)
+            return parsed.path or "/"
+        except Exception:
+            return url
+    
+
+    def _validate_response_schema(
+        self, 
+        url: str, 
+        method: str, 
+        status_code: int, 
+        response_body: Any
+    ) -> Dict[str, Any]:
+        """
+        Validate API response against OpenAPI schema.
+        
+        Args:
+            url: Full request URL
+            method: HTTP method
+            status_code: Response status code
+            response_body: Parsed response body
+            
+        Returns:
+            Dict with validation results
+        """
+        if not self.schema_validator:
+            return {
+                "schema_valid": True,
+                "schema_found": False,
+                "violations": [],
+                "violation_count": 0
+            }
+        
+        endpoint = self._extract_endpoint_path(url)
+        
+        try:
+            result = self.schema_validator.validate_response(
+                endpoint=endpoint,
+                method=method,
+                status_code=status_code,
+                response_body=response_body
+            )
+            
+            return {
+                "schema_valid": result.is_valid,
+                "schema_found": result.schema_found,
+                "violations": [v.to_dict() for v in result.violations],
+                "violation_count": len(result.violations)
+            }
+        except Exception as e:
+            print(f"[SCHEMA] Validation error: {e}", file=sys.stderr)
+            return {
+                "schema_valid": True,
+                "schema_found": False,
+                "violations": [],
+                "violation_count": 0,
+                "error": str(e)
+            }
+
     def _find_latest_openapi_spec(self, openapi_dir: str):
         """Finds the newest OpenAPI spec file (.yaml or .json) in the outputs directory."""
         try:
@@ -192,9 +261,6 @@ class TestExecutionNode:
         except Exception:
             return None
         
-    # ------------------------------------------------------------------    
-    # OpenAPI Traceability & Coverage
-    # ------------------------------------------------------------------
     def _calculate_openapi_coverage(self, feature_text: str, spec: str):
         """
         Computes OpenAPI test coverage based on the feature file content.
@@ -202,7 +268,6 @@ class TestExecutionNode:
         """
         try:
             
-            # Extract paths and methods
             defined = []
             for path, methods in spec.get("paths", {}).items():
                 for method in methods.keys():
@@ -222,37 +287,30 @@ class TestExecutionNode:
 
             defined_set = {(m, p) for (m, p, _) in defined}
 
-            # Normalize feature file
             feature_lines = feature_text.splitlines()
             feature_lower = feature_text.lower()
 
-            # Extract all potential URLs from feature file
             url_candidates = []
             for line in feature_lines:
                 found = re.findall(r"/[^\s\"']+", line)
                 url_candidates.extend(found)
 
-            # Normalize paths (remove query params)
             normalized_candidates = []
             for u in url_candidates:
                 clean = u.split("?")[0].rstrip("/")
                 normalized_candidates.append(clean)
 
-            # Coverage detection
             covered_set = set()
 
             for (method, openapi_path_only, pattern) in defined:
-                # Check if HTTP method appears in feature text
                 if method.lower() not in feature_lower:
                     continue
 
-                # Check if any URL in feature matches this OpenAPI path
                 for cand in normalized_candidates:
                     if pattern.match(cand):
                         covered_set.add((method, openapi_path_only))
                         break
 
-            # Compute coverage
             uncovered = sorted([f"{m} {p}" for (m, p) in (defined_set - covered_set)])
             total = len(defined_set)
             covered = len(covered_set)
@@ -264,9 +322,6 @@ class TestExecutionNode:
             return 0.0, [f"Coverage calculation failed: {str(e)}"]
 
 
-    # ------------------------------------------------------------------
-    # FAST HTTP Executor (Python requests)
-    # ------------------------------------------------------------------
     def _run_curl_command(self, method: str, url: str, base_url: str, body: Optional[str] = None):
         try:
             method = method.upper()
@@ -278,10 +333,8 @@ class TestExecutionNode:
                 auth_headers = self.auth_handler.get_auth_headers()
                 headers.update(auth_headers)
                 
-                # Handle API key in query params if configured
                 auth_params = self.auth_handler.get_auth_query_params()
                 if auth_params:
-                    # Append query params to URL (URL-encode values for safety)
                     separator = "&" if "?" in url else "?"
                     param_str = "&".join(f"{k}={quote(str(v), safe='')}" for k, v in auth_params.items())
                     url = f"{url}{separator}{param_str}"
@@ -339,9 +392,6 @@ class TestExecutionNode:
                 "stderr": str(e)
             }
 
-    # ------------------------------------------------------------------
-    # HTML Report Generator
-    # ------------------------------------------------------------------
     def _generate_html_report(self, state, input_json: str):
         """Generates HTML report + returns the HTML content (VS Code receives it)."""
         try:
@@ -358,34 +408,53 @@ class TestExecutionNode:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
-        # --- Calculate OpenAPI coverage ---
         coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, state.analysis)
         
-        # --- Get authentication info ---
         auth_info = "No authentication"
         if self.auth_handler and self.auth_handler.is_authenticated():
             auth_info = self.auth_handler.get_auth_summary()
+
+        schema_passed = sum(1 for r in results if r.get("schema_validation", {}).get("schema_valid", True))
+        schema_failed = sum(1 for r in results if r.get("schema_validation", {}).get("schema_found", False) and not r.get("schema_validation", {}).get("schema_valid", True))
+        schema_not_found = sum(1 for r in results if not r.get("schema_validation", {}).get("schema_found", True))
+        total_violations = sum(r.get("schema_validation", {}).get("violation_count", 0) for r in results)
 
         html_output = [
             "<html><head><title>API Test Report</title>",
             "<style>",
             "body{font-family:Arial;}table{width:100%;border-collapse:collapse;}",
-            "th,td{border:1px solid #ccc;padding:6px;}",
+            "th,td{border:1px solid #ccc;padding:6px;vertical-align:top;}",
             ".passed{color:green;font-weight:bold;}",
             ".failed{color:red;font-weight:bold;}",
             ".body{font-color:white;}",
             ".auth-info{background:#f0f7ff;padding:10px;border-radius:5px;margin-bottom:15px;}",
+            ".contract-info{background:#fff3cd;padding:10px;border-radius:5px;margin-bottom:15px;border:1px solid #ffc107;}",
+            ".schema-valid{color:#28a745;font-weight:bold;}",
+            ".schema-invalid{color:#dc3545;font-weight:bold;}",
+            ".schema-na{color:#6c757d;font-style:italic;}",
+            ".violation-list{font-size:11px;margin:5px 0;padding-left:15px;}",
+            ".violation-item{margin:3px 0;color:#dc3545;}",
+            ".summary-box{display:inline-block;padding:8px 15px;margin:5px;border-radius:5px;font-weight:bold;}",
+            ".summary-passed{background:#d4edda;color:#155724;}",
+            ".summary-failed{background:#f8d7da;color:#721c24;}",
+            ".summary-na{background:#e2e3e5;color:#383d41;}",
             "</style>",
             "</head><body id ='body'>",
 
-            "<h2>API Test Execution Report</h2>",
+            "<h2>🧪 API Test Execution Report</h2>",
             f"<p>Generated: {timestamp}</p>",
-            f"<div class='auth-info'><strong>Authentication:</strong> {html.escape(auth_info)}</div>",
+            f"<div class='auth-info'><strong>🔐 Authentication:</strong> {html.escape(auth_info)}</div>",
+            
+            "<div class='contract-info'>",
+            "<strong>📋 Contract Testing Summary</strong><br>",
+            f"<div class='summary-box summary-passed'>✅ Schema Valid: {schema_passed}</div>",
+            f"<div class='summary-box summary-failed'>❌ Schema Violations: {schema_failed}</div>",
+            f"<div class='summary-box summary-na'>⚪ No Schema: {schema_not_found}</div>",
+            f"<div class='summary-box summary-failed' style='background:#fff;border:1px solid #dc3545;'>Total Violations: {total_violations}</div>",
+            "</div>",
+            
             f"<h3>Test Coverage: {coverage:.2f}%</h3>",
 
-            # --------------------------------
-            # ⭐ TABLE STARTS HERE
-            # --------------------------------
             "<table id='resultsTable'>",
 
             "<tr>"
@@ -396,6 +465,7 @@ class TestExecutionNode:
             "<th>Status Code</th>"
             "<th>HTTP Request</th>"
             "<th>Method</th>"
+            "<th>Contract<br>Validation</th>"
             "<th>"
             "Result<br>"
             "<select id='resultFilter' onchange='filterResults()'>"
@@ -407,9 +477,6 @@ class TestExecutionNode:
             "</tr>",
         ]
 
-        # --------------------------------
-        # TABLE ROWS
-        # --------------------------------
         for idx, r in enumerate(results):
             scenario = r.get("scenario", "N/A")
             request_body = r.get("request_body", "N/A")
@@ -421,26 +488,45 @@ class TestExecutionNode:
 
             result_flag = r.get("result", "N/A")
             color = "green" if result_flag == "passed" else "red"
+            
+            schema_validation = r.get("schema_validation", {})
+            schema_found = schema_validation.get("schema_found", False)
+            schema_valid = schema_validation.get("schema_valid", True)
+            violations = schema_validation.get("violations", [])
+            
+            if not schema_found:
+                schema_cell = "<span class='schema-na'>No Schema</span>"
+            elif schema_valid:
+                schema_cell = "<span class='schema-valid'>✅ Valid</span>"
+            else:
+                # Show violations
+                violation_html = f"<span class='schema-invalid'>❌ {len(violations)} Violation(s)</span>"
+                violation_html += "<ul class='violation-list'>"
+                for v in violations[:3]:  # Show max 3 violations
+                    path = html.escape(v.get("path", ""))
+                    msg = html.escape(v.get("message", "")[:50])
+                    violation_html += f"<li class='violation-item'><code>{path}</code>: {msg}</li>"
+                if len(violations) > 3:
+                    violation_html += f"<li class='violation-item'><em>...+{len(violations) - 3} more</em></li>"
+                violation_html += "</ul>"
+                schema_cell = violation_html
 
             html_output.append(
                 f"<tr>"
                 f"<td>{idx + 1}</td>"
-                f"<td>{scenario}</td>"
-                f"<td><code>{request_body}</code></td>"
-                f"<td>{html.escape(str(status))}</td>"
+                f"<td>{html.escape(str(scenario))}</td>"
+                f"<td><code>{html.escape(str(request_body))}</code></td>"
+                f"<td>{html.escape(str(status)[:200])}</td>"
                 f"<td>{status_code}</td>"
-                f"<td><code>{http_request}</code></td>"
+                f"<td><code>{html.escape(str(http_request))}</code></td>"
                 f"<td>{method}</td>"
+                f"<td>{schema_cell}</td>"
                 f"<td style='font-weight:bold; color:{color}'>{result_flag.upper()}</td>"
                 f"</tr>"
             )
 
-        # Close table
         html_output.append("</table>")
 
-        # --------------------------------
-        # ⭐ JAVASCRIPT FILTER
-        # --------------------------------
         html_output.append("""
         <script>
         function filterResults() {
@@ -449,7 +535,7 @@ class TestExecutionNode:
             let rows = table.getElementsByTagName('tr');
 
             for (let i = 1; i < rows.length; i++) {
-                let resultCell = rows[i].getElementsByTagName('td')[7];
+                let resultCell = rows[i].getElementsByTagName('td')[8];
                 if (!resultCell) continue;
 
                 let result = resultCell.textContent.trim().toLowerCase();
@@ -464,14 +550,46 @@ class TestExecutionNode:
         </script>
         """)
 
-        # --------------------------------
-        # Uncovered endpoints
-        # --------------------------------
+        schema_failures = [r for r in results if r.get("schema_validation", {}).get("schema_found", False) 
+                          and not r.get("schema_validation", {}).get("schema_valid", True)]
+        
+        if schema_failures:
+            html_output.append("<h2>📋 Contract Violations (Schema Validation Failures)</h2>")
+            html_output.append("<p style='color:#666;'>The following API responses did not match their OpenAPI schema definitions:</p>")
+            
+            for r in schema_failures:
+                scenario = html.escape(str(r.get("scenario", "N/A")))
+                endpoint = html.escape(str(r.get("url", "N/A")))
+                method = r.get("method", "N/A")
+                violations = r.get("schema_validation", {}).get("violations", [])
+                
+                html_output.append(
+                    f"<div style='background:#fff5f5;border:1px solid #dc3545;border-radius:5px;padding:10px;margin:10px 0;'>"
+                    f"<strong style='color:#dc3545;'>❌ {scenario}</strong><br>"
+                    f"<code>{method} {endpoint}</code>"
+                    f"<table style='width:100%;margin-top:10px;font-size:12px;'>"
+                    f"<tr style='background:#f8d7da;'><th>Path</th><th>Error</th><th>Expected</th><th>Actual</th></tr>"
+                )
+                
+                for v in violations:
+                    path = html.escape(v.get("path", ""))
+                    message = html.escape(v.get("message", "")[:80])
+                    expected = html.escape(v.get("expected", "")[:40])
+                    actual = html.escape(v.get("actual", "")[:40])
+                    html_output.append(
+                        f"<tr><td><code>{path}</code></td><td>{message}</td>"
+                        f"<td>{expected}</td><td>{actual}</td></tr>"
+                    )
+                
+                html_output.append("</table></div>")
+        
         if uncovered:
             html_output.append("<h2>Uncovered Endpoints from OpenAPI Spec</h2><ul>")
             for ep in uncovered:
-                html_output.append(f"<li>{ep}</li>")
+                html_output.append(f"<li>{html.escape(ep)}</li>")
             html_output.append("</ul>")
+        
+        html_output.append("</body></html>")
 
         full_html = "\n".join(html_output)
 
@@ -482,14 +600,10 @@ class TestExecutionNode:
 
     
     
-    # ------------------------------------------------------------------
-    # CORE EXECUTION
-    # ------------------------------------------------------------------
     def __call__(self, state, batch_size: int = 5):
         try:
             self.auth_handler = AuthHandler(state.project_path)
             
-            # Log auth status (to stderr to not interfere with JSON output)
             if self.auth_handler.is_authenticated():
                 print(f"[TEST] Authentication: {self.auth_handler.get_auth_summary()}", file=sys.stderr, flush=True)
             else:
@@ -497,24 +611,28 @@ class TestExecutionNode:
             
             openapi_dir = os.path.join(state.project_path, "output")
             filepath = self._find_latest_openapi_spec(openapi_dir)
+            
+            if not filepath:
+                raise FileNotFoundError(f"OpenAPI spec not found in {openapi_dir}")
+            
             with open(filepath, "r", encoding="utf-8") as f:
                 if filepath.endswith((".yaml", ".yml")):
                     state.analysis = yaml.safe_load(f)
                 else:
                     state.analysis = json.load(f)
+            
+            self.schema_validator = SchemaValidator(state.analysis)
+            print("[TEST] Schema Validator initialized for contract testing", file=sys.stderr, flush=True)
 
-            # Remove Feature: lines
+        
             cleaned_text = re.sub(r"^\s*Feature:.*$", "", state.feature_text, flags=re.MULTILINE)
 
-            # Remove tags like @smoke @edge @performance
             cleaned_text = re.sub(r"^\s*(?:@\w[\w-]*\s*)+", "", cleaned_text, flags=re.MULTILINE)
 
-            # Remove comments starting with "#"
             cleaned_text = re.sub(r"^\s*#.*$", "", cleaned_text, flags=re.MULTILINE)
 
             cleaned_text = re.sub(r"\n{2,}", "\n", cleaned_text).strip()
 
-            # Split using MULTILINE regex inside the pattern
             raw_scenarios = re.split(r"(?m)^\s*Scenario:\s*", cleaned_text)
 
             scenarios = []
@@ -523,14 +641,11 @@ class TestExecutionNode:
                 if not chunk:
                     continue
 
-                # First line = scenario name
                 lines = chunk.split("\n")
                 scenario_name = lines[0].strip()
 
-                # Rest of lines form the body (Given/When/Then)
                 scenario_body = "\n".join(lines[1:]).strip()
 
-                # Rebuild scenario in proper gherkin format
                 full_scenario = f"Scenario: {scenario_name}\n{scenario_body}"
 
 
@@ -580,11 +695,9 @@ class TestExecutionNode:
                 else:
                     content = str(result).strip()
 
-                # Fix: Extract JSON safely even if extra text is added
                 try:
                     parsed = json.loads(content)
                 except:
-                    # Greedy JSON extractor: handles nested content reliably
                     match = re.search(r"\{(?:[^{}]|(?R))*\}", content, re.DOTALL)
                     if not match:
                         parsed = None
@@ -600,6 +713,33 @@ class TestExecutionNode:
                 returned_results = parsed.get("results", [])
 
                 for idx, r in enumerate(returned_results):
+                    url = r.get("url", "")
+                    method = r.get("method", "GET")
+                    status_code = r.get("status", 0)
+                    response_body = r.get("response", {})
+                    
+                    schema_result = self._validate_response_schema(
+                        url=url,
+                        method=method,
+                        status_code=status_code,
+                        response_body=response_body
+                    )
+                    
+                    r["schema_validation"] = schema_result
+                    
+                    if schema_result.get("schema_found") and not schema_result.get("schema_valid"):
+                        r["result"] = "failed"
+                        r["schema_failure"] = True
+                        print(
+                            f"[SCHEMA] ❌ Contract violation in '{r.get('scenario', 'N/A')}': "
+                            f"{schema_result.get('violation_count', 0)} violations",
+                            file=sys.stderr, flush=True
+                        )
+                    elif schema_result.get("schema_found") and schema_result.get("schema_valid"):
+                        print(
+                            f"[SCHEMA] ✅ Schema valid for '{r.get('scenario', 'N/A')}'",
+                            file=sys.stderr, flush=True
+                        )
 
                     all_results.append(r)
 

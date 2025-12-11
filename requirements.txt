@@ -7,3 +7,4 @@ langchain==1.0.0
 langchain-openai==1.0.0
 requests>=2.31.0
 pathspec>=0.12.1
+jsonschema>=4.20.0
