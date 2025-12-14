@@ -17,6 +17,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 import html
+import xml.etree.ElementTree as ET
 from .auth_handler import AuthHandler
 
 
@@ -358,6 +359,9 @@ class TestExecutionNode:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
+        # --- Generate JUnit XML Report for CI/CD ---
+        self._generate_junit_xml_report(results, output_dir, timestamp)
+
         # --- Calculate OpenAPI coverage ---
         coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, state.analysis)
         
@@ -480,6 +484,87 @@ class TestExecutionNode:
 
         return json.dumps({"execution_output": full_html})
 
+    # ------------------------------------------------------------------
+    # JUnit XML Report Generator
+    # ------------------------------------------------------------------
+    def _generate_junit_xml_report(self, results: List[Dict], output_dir: str, timestamp: str) -> Optional[str]:
+        """
+        Generates a JUnit XML report for CI/CD integration.
+        
+        Args:
+            results: List of test result dictionaries
+            output_dir: Directory to save the report
+            timestamp: Timestamp string for filename
+            
+        Returns:
+            Path to the generated XML file, or None if generation failed
+        """
+        try:
+            total_tests = len(results)
+            failures = sum(1 for r in results if r.get("result", "").lower() == "failed")
+            
+            testsuites = ET.Element("testsuites")
+            testsuites.set("name", "BDD API Tests")
+            testsuites.set("tests", str(total_tests))
+            testsuites.set("failures", str(failures))
+            testsuites.set("errors", "0")
+            testsuites.set("time", "0")  
+            
+            testsuite = ET.SubElement(testsuites, "testsuite")
+            testsuite.set("name", "API Test Execution")
+            testsuite.set("tests", str(total_tests))
+            testsuite.set("failures", str(failures))
+            testsuite.set("errors", "0")
+            testsuite.set("skipped", "0")
+            testsuite.set("timestamp", datetime.now().isoformat())
+            
+            for idx, r in enumerate(results):
+                scenario = r.get("scenario", f"Test_{idx + 1}")
+                result_flag = r.get("result", "failed").lower()
+                method = r.get("method", "N/A")
+                url = r.get("url", "N/A")
+                status_code = r.get("status", "N/A")
+                response = r.get("response", r.get("error", "N/A"))
+                request_body = r.get("request_body", "")
+                
+                testcase = ET.SubElement(testsuite, "testcase")
+                testcase.set("name", scenario)
+                testcase.set("classname", f"API.{method}")
+                testcase.set("time", "0")  # Placeholder for execution time
+                
+                if result_flag == "failed":
+                    failure = ET.SubElement(testcase, "failure")
+                    failure.set("message", f"API call failed: {method} {url} returned {status_code}")
+                    failure.set("type", "AssertionError")
+                    
+                    failure_details = [
+                        f"Scenario: {scenario}",
+                        f"Method: {method}",
+                        f"URL: {url}",
+                        f"Status Code: {status_code}",
+                        f"Request Body: {request_body}",
+                        f"Response: {str(response)[:500]}"  
+                    ]
+                    failure.text = "\n".join(failure_details)
+                
+                system_out = ET.SubElement(testcase, "system-out")
+                system_out.text = f"Request: {method} {url}\nStatus: {status_code}\nResponse: {str(response)[:1000]}"
+            
+            xml_string = ET.tostring(testsuites, encoding="unicode", method="xml")
+            
+            xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_string
+            
+            xml_path = os.path.join(output_dir, f"api_test_report_{timestamp}.xml")
+            with open(xml_path, "w", encoding="utf-8") as f:
+                f.write(xml_content)
+            
+            print(f"[TEST] JUnit XML report saved: {xml_path}", file=sys.stderr, flush=True)
+            
+            return xml_path
+            
+        except Exception as e:
+            print(f"[TEST] Warning: Failed to generate JUnit XML report: {e}", file=sys.stderr, flush=True)
+            return None
     
     
     # ------------------------------------------------------------------
