@@ -224,11 +224,11 @@ class TestExecutionNode:
                 "violation_count": 0
             }
         
-        endpoint = self._extract_endpoint_path(url)
+        # endpoint = self._extract_endpoint_path(url)
         
         try:
             result = self.schema_validator.validate_response(
-                endpoint=endpoint,
+                endpoint=url,
                 method=method,
                 status_code=status_code,
                 response_body=response_body
@@ -711,6 +711,7 @@ class TestExecutionNode:
                 #all_results.extend(parsed.get("results", []))
 
                 returned_results = parsed.get("results", [])
+                print("returned_results", returned_results)
 
                 for idx, r in enumerate(returned_results):
                     url = r.get("url", "")
@@ -724,7 +725,7 @@ class TestExecutionNode:
                         status_code=status_code,
                         response_body=response_body
                     )
-                    
+                    print("schema_result", schema_result)
                     r["schema_validation"] = schema_result
                     
                     if schema_result.get("schema_found") and not schema_result.get("schema_valid"):
