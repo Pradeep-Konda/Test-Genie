@@ -360,10 +360,17 @@ class TestExecutionNode:
         html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
         # --- Generate JUnit XML Report for CI/CD ---
-        self._generate_junit_xml_report(results, output_dir, timestamp)
+        
 
         # --- Calculate OpenAPI coverage ---
         coverage, uncovered = self._calculate_openapi_coverage(state.feature_text, state.analysis)
+
+        # Save coverage info so XML report can reuse it
+        self._last_coverage = coverage
+        self._last_uncovered = uncovered
+
+        self._generate_junit_xml_report(results, output_dir, timestamp)
+
         
         # --- Get authentication info ---
         auth_info = "No authentication"
@@ -517,6 +524,23 @@ class TestExecutionNode:
             testsuite.set("errors", "0")
             testsuite.set("skipped", "0")
             testsuite.set("timestamp", datetime.now().isoformat())
+
+            # Global execution metadata for CI
+            coverage = getattr(self, "_last_coverage", None)
+            uncovered = getattr(self, "_last_uncovered", [])
+
+            auth_info = "No authentication"
+            if self.auth_handler and self.auth_handler.is_authenticated():
+                auth_info = self.auth_handler.get_auth_summary()
+
+            suite_out = ET.SubElement(testsuite, "system-out")
+
+            suite_out.text = (
+                f"\nAuthentication: {auth_info}\n"
+                f"OpenAPI Coverage: {coverage if coverage is not None else 'N/A'}%"
+            )
+
+
             
             for idx, r in enumerate(results):
                 scenario = r.get("scenario", f"Test_{idx + 1}")
@@ -549,6 +573,15 @@ class TestExecutionNode:
                 
                 system_out = ET.SubElement(testcase, "system-out")
                 system_out.text = f"Request: {method} {url}\nStatus: {status_code}\nResponse: {str(response)[:1000]}"
+            
+            # Uncovered endpoints summary (END)
+            end_out = ET.SubElement(testsuite, "system-out")
+            end_out.text = (
+                "\nUncovered Endpoints:\n" +
+                ("\n".join(f"- {ep}" for ep in uncovered) if uncovered else "- None")
+)
+
+            
             
             xml_string = ET.tostring(testsuites, encoding="unicode", method="xml")
             
