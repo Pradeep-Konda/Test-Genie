@@ -19,6 +19,7 @@ from typing import List, Optional, Any, Dict
 import html
 import xml.etree.ElementTree as ET
 from .auth_handler import AuthHandler
+from .schema_validator import SchemaValidator
 
 
 
@@ -37,6 +38,9 @@ class TestExecutionNode:
         
         # Auth handler will be initialized when __call__ is invoked with project_path
         self.auth_handler: Optional[AuthHandler] = None
+
+        # Schema validator for contract testing (initialized in __call__)
+        self.schema_validator: Optional[SchemaValidator] = None
 
         self.llm = ChatOpenAI(
             model=model,
@@ -179,7 +183,59 @@ class TestExecutionNode:
             system_prompt=self.system_prompt,
         )
 
-     # ------------------------------------------------------------------
+    def _validate_response_schema(
+        self, 
+        url: str, 
+        method: str, 
+        status_code: int, 
+        response_body: Any
+    ) -> Dict[str, Any]:
+        """
+        Validate API response against OpenAPI schema.
+        
+        Args:
+            url: Full request URL
+            method: HTTP method
+            status_code: Response status code
+            response_body: Parsed response body
+            
+        Returns:
+            Dict with validation results
+        """
+        if not self.schema_validator:
+            return {
+                "schema_valid": True,
+                "schema_found": False,
+                "violations": [],
+                "violation_count": 0
+            }
+        
+        # endpoint = self._extract_endpoint_path(url)
+        
+        try:
+            result = self.schema_validator.validate_response(
+                endpoint=url,
+                method=method,
+                status_code=status_code,
+                response_body=response_body
+            )
+            
+            return {
+                "schema_valid": result.is_valid,
+                "schema_found": result.schema_found,
+                "violations": [v.to_dict() for v in result.violations],
+                "violation_count": len(result.violations)
+            }
+        except Exception as e:
+            print(f"[SCHEMA] Validation error: {e}", file=sys.stderr)
+            return {
+                "schema_valid": True,
+                "schema_found": False,
+                "violations": [],
+                "violation_count": 0,
+                "error": str(e)
+            }
+    # ------------------------------------------------------------------
     # Tool 1: Find latest openapi spec from output
     # ------------------------------------------------------------------
     def _find_latest_openapi_spec(self, openapi_dir: str):
@@ -450,7 +506,7 @@ class TestExecutionNode:
             ".result-badge{display:inline-flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:999px;border:1px solid transparent;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;}",
             ".result-passed{border-color:var(--tg-pass);box-shadow:0 0 0 1px rgba(34,197,94,0.4);}",
             ".result-failed{border-color:var(--tg-fail);box-shadow:0 0 0 1px rgba(239,68,68,0.4);}",
-            ".table-wrapper{border-radius:12px;border:1px solid var(--tg-border-subtle);background-color:var(--tg-surface);overflow:hidden;}",
+            ".table-wrapper{border-radius:12px;border:1px solid var(--tg-border-subtle);background-color:var(--tg-surface);overflow-x: auto;overflow-y: auto;max-width: 100%;}",
             ".empty-state{margin-top:16px;font-size:13px;color:var(--tg-muted);}",
             ".uncovered{margin-top:20px;font-size:13px;}",
             ".uncovered h2{font-size:14px;margin-bottom:8px;}",
@@ -549,6 +605,7 @@ class TestExecutionNode:
                 "<th>Status</th>"
                 "<th class='col-url'>HTTP Request</th>"
                 "<th>Method</th>"
+                "<th>Contract<br>Validation</th>"
                 "<th>Result</th>"
                 "</tr></thead><tbody>"
             )
@@ -562,6 +619,28 @@ class TestExecutionNode:
                 status_code = r.get("status", "N/A")
                 http_request = html.escape(str(r.get("url", "N/A")))
                 method = html.escape(str(r.get("method", "N/A")))
+
+                schema_validation = r.get("schema_validation", {})
+                schema_found = schema_validation.get("schema_found", False)
+                schema_valid = schema_validation.get("schema_valid", True)
+                violations = schema_validation.get("violations", [])
+                
+                if not schema_found:
+                    schema_cell = "<span class='result-badge result-failed'>No Schema</span>"
+                elif schema_valid:
+                    schema_cell = "<span class='result-badge result-passed'>Valid</span>"
+                else:
+                    # Show violations
+                    violation_html = f"<span class='schema-invalid'>{len(violations)} Violation(s)</span>"
+                    violation_html += "<ul class='violation-list'>"
+                    for v in violations[:3]:  # Show max 3 violations
+                        path = html.escape(v.get("path", ""))
+                        msg = html.escape(v.get("message", "")[:50])
+                        violation_html += f"<li class='violation-item'><code>{path}</code>: {msg}</li>"
+                    if len(violations) > 3:
+                        violation_html += f"<li class='violation-item'><em>...+{len(violations) - 3} more</em></li>"
+                    violation_html += "</ul>"
+                    schema_cell = violation_html
 
                 # Status classification
                 status_class = "status-unknown"
@@ -596,6 +675,7 @@ class TestExecutionNode:
                     f"<td><span class='status-pill {status_class}'>{html.escape(str(status_code))}</span></td>"
                     f"<td><div class='code-block'>{http_request}</div></td>"
                     f"<td>{method}</td>"
+                    f"<td>{schema_cell}</td>"
                     f"<td><span class='{result_class}'>{result_label}</span></td>"
                     "</tr>"
                 )
@@ -623,38 +703,50 @@ class TestExecutionNode:
         # Filtering logic (by result + search)
         html_output.append(
             """
-<script>
+    <script>
 function filterResults() {
-  var filter = document.getElementById('resultFilter').value;
-  var searchInput = document.getElementById('searchInput');
-  var search = searchInput ? searchInput.value.toLowerCase() : "";
-  var table = document.getElementById('resultsTable');
-  if (!table) return;
+    var filter = document.getElementById('resultFilter').value;
+    var searchInput = document.getElementById('searchInput');
+    var search = searchInput ? searchInput.value.toLowerCase() : "";
+    var table = document.getElementById('resultsTable');
+    if (!table) return;
 
-  var rows = table.getElementsByTagName('tr');
-  for (var i = 1; i < rows.length; i++) {
-    var cells = rows[i].getElementsByTagName('td');
-    if (!cells || cells.length === 0) continue;
+    var rows = table.getElementsByTagName('tr');
 
-    var resultCell = cells[7];
-    var scenarioCell = cells[1];
-    var urlCell = cells[5];
-    var methodCell = cells[6];
+    for (var i = 1; i < rows.length; i++) {
+        var cells = rows[i].getElementsByTagName('td');
+        if (!cells || cells.length === 0) continue;
 
-    var result = resultCell ? resultCell.textContent.trim().toLowerCase() : "";
-    var haystack = "";
-    if (scenarioCell) haystack += scenarioCell.textContent.toLowerCase() + " ";
-    if (urlCell) haystack += urlCell.textContent.toLowerCase() + " ";
-    if (methodCell) haystack += methodCell.textContent.toLowerCase();
+        var resultCell = cells[8];
+        var scenarioCell = cells[1];
+        var urlCell = cells[5];
+        var methodCell = cells[6];
+        var contractCell = cells[7];
 
-    var matchesResult = (filter === "all" || result === filter);
-    var matchesSearch = (!search || haystack.indexOf(search) !== -1);
+        // ----- RESULT MATCHING (FIXED) -----
+        var isPassed = resultCell.querySelector('.result-passed') !== null;
+        var isFailed = resultCell.querySelector('.result-failed') !== null;
 
-    rows[i].style.display = (matchesResult && matchesSearch) ? "" : "none";
-  }
+        var matchesResult =
+            filter === "all" ||
+            (filter === "passed" && isPassed) ||
+            (filter === "failed" && isFailed);
+
+        // ----- SEARCH MATCHING -----
+        var haystack = "";
+        if (scenarioCell) haystack += scenarioCell.textContent.toLowerCase() + " ";
+        if (urlCell) haystack += urlCell.textContent.toLowerCase() + " ";
+        if (methodCell) haystack += methodCell.textContent.toLowerCase() + " ";
+        if (contractCell) haystack += contractCell.textContent.toLowerCase();
+
+        var matchesSearch = (!search || haystack.indexOf(search) !== -1);
+
+        rows[i].style.display = (matchesResult && matchesSearch) ? "" : "none";
+    }
 }
 </script>
-"""
+
+    """
         )
 
         html_output.append("</div></body></html>")
@@ -796,6 +888,8 @@ function filterResults() {
                 else:
                     state.analysis = json.load(f)
 
+            self.schema_validator = SchemaValidator(state.analysis)
+
             # Remove Feature: lines
             cleaned_text = re.sub(r"^\s*Feature:.*$", "", state.feature_text, flags=re.MULTILINE)
 
@@ -893,7 +987,22 @@ function filterResults() {
                 returned_results = parsed.get("results", [])
 
                 for idx, r in enumerate(returned_results):
-
+                    url = r.get("url", "")
+                    method = r.get("method", "GET")
+                    status_code = r.get("status", 0)
+                    response_body = r.get("response", {})
+                    
+                    schema_result = self._validate_response_schema(
+                        url=url,
+                        method=method,
+                        status_code=status_code,
+                        response_body=response_body
+                    )
+                    r["schema_validation"] = schema_result
+                    
+                    if schema_result.get("schema_found") and not schema_result.get("schema_valid"):
+                        r["result"] = "failed"
+                        r["schema_failure"] = True
                     all_results.append(r)
 
 
