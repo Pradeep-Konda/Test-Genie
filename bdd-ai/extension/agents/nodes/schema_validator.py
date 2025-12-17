@@ -96,7 +96,6 @@ class SchemaValidator:
         servers = self.spec.get("servers", [])
         if servers:
             self.server_url = servers[0].get("url", "")
-            print("self.server_url---------------", self.server_url)
         try:
             parsed = urlparse(self.server_url or "")
             # base_path will be like "/api/v1" or "/" if none
@@ -186,7 +185,6 @@ class SchemaValidator:
     #     return endpoint
 
     def _normalize_path(self, endpoint: str) -> str:
-        print("_normalize_path input =", endpoint)
 
         # 1) Extract the path from the URL
         parsed = urlparse(endpoint)
@@ -204,7 +202,6 @@ class SchemaValidator:
         # 4) Remove trailing slash
         path = path.rstrip("/") or "/"
 
-        print("_normalize_path output =", path)
         return path
     
     def _match_path(self, request_path: str) -> Optional[str]:
@@ -219,17 +216,14 @@ class SchemaValidator:
             Matching OpenAPI path or None
         """
         request_path = self._normalize_path(request_path)
-        print(request_path,"sjdsssssssssssssssssssss")
         
         if request_path in self.paths:
-            print("------------------requestpath-------------------")
             return request_path
             
         for openapi_path in self.paths.keys():
             # Convert /users/{id} to regex /users/[^/]+
             pattern = re.sub(r"\{[^}]+\}", r"[^/]+", openapi_path)
             pattern = f"^{pattern}$"
-            print("pattern\n", pattern)
             
             if re.match(pattern, request_path):
                 return openapi_path
@@ -254,22 +248,22 @@ class SchemaValidator:
             Response schema dict or None if not defined
         """
         matched_path = self._match_path(endpoint)
-        print("matched_path---------", matched_path)
+        # print("matched_path---------", matched_path)
         if not matched_path:
             return None
             
         path_item = self.paths.get(matched_path, {})
         operation = path_item.get(method.lower(), {})
-        print("operation-------", operation)
+        # print("operation-------", operation)
         
         if not operation:
             return None
             
         responses = operation.get("responses", {})
-        print(r"responses", responses)
+        # print(r"responses", responses)
         
         response_def = responses.get(str(status_code))
-        print("response_def", response_def)
+        # print("response_def", response_def)
         
         if not response_def:
             range_code = f"{str(status_code)[0]}XX"
@@ -284,15 +278,13 @@ class SchemaValidator:
         content = response_def.get("content", {})
         
         json_content = content.get("application/json", {})
-        print("json_content", json_content)
         if not json_content:
             for content_type, content_def in content.items():
                 if "json" in content_type.lower():
                     json_content = content_def
                     break
                     
-        schema = json_content.get("example", {})
-        print("schema----------", schema)
+        schema = json_content.get("schema", {})
         
         if schema:
             return self._expand_schema(schema)
@@ -332,7 +324,7 @@ class SchemaValidator:
             )
         
         schema = self._get_response_schema(endpoint, method, status_code)
-        print("schema", schema)
+        # print("schema", schema)
         
         if not schema:
             return ValidationResult(
