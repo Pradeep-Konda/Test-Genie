@@ -372,117 +372,292 @@ class TestExecutionNode:
         self._generate_junit_xml_report(results, output_dir, timestamp)
 
         
+        # --- Basic execution stats ---
+        total_tests = len(results)
+        passed_tests = sum(1 for r in results if str(r.get("result", "")).lower() == "passed")
+        failed_tests = sum(1 for r in results if str(r.get("result", "")).lower() == "failed")
+        pass_rate = (passed_tests / total_tests * 100) if total_tests else 0.0
+
         # --- Get authentication info ---
         auth_info = "No authentication"
         if self.auth_handler and self.auth_handler.is_authenticated():
             auth_info = self.auth_handler.get_auth_summary()
 
         html_output = [
-            "<html><head><title>API Test Report</title>",
+            "<!DOCTYPE html>",
+            "<html lang='en'>",
+            "<head>",
+            "<meta charset='UTF-8' />",
+            f"<title>API Test Report - {timestamp}</title>",
+            "<meta name='viewport' content='width=device-width, initial-scale=1.0' />",
             "<style>",
-            "body{font-family:Arial;}table{width:100%;border-collapse:collapse;}",
-            "th,td{border:1px solid #ccc;padding:6px;}",
-            ".passed{color:green;font-weight:bold;}",
-            ".failed{color:red;font-weight:bold;}",
-            ".body{font-color:white;}",
-            ".auth-info{background:#f0f7ff;padding:10px;border-radius:5px;margin-bottom:15px;}",
+            ":root{",
+            "  --tg-bg:#f9fafb;",
+            "  --tg-surface:#ffffff;",
+            "  --tg-surface-alt:#f3f4f6;",
+            "  --tg-border-subtle:rgba(148,163,184,0.4);",
+            "  --tg-text:#111827;",
+            "  --tg-muted:#6b7280;",
+            "  --tg-pass:#22c55e;",
+            "  --tg-fail:#ef4444;",
+            "  --tg-status-success:#22c55e;",
+            "  --tg-status-client:#f97316;",
+            "  --tg-status-server:#ef4444;",
+            "}",
+            "*,*::before,*::after{box-sizing:border-box;}",
+            "body{margin:0;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background-color:var(--tg-bg);color:var(--tg-text);-webkit-font-smoothing:antialiased;}",
+            ".container{max-width:1200px;margin:0 auto;}",
+            ".header{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;}",
+            ".header-main h1{margin:0 0 4px;font-size:26px;font-weight:600;}",
+            ".header-main .subtitle{margin:0;font-size:14px;color:var(--tg-muted);}",
+            ".header-main .timestamp{font-size:12px;color:var(--tg-muted);margin-top:4px;}",
+            ".header-side{text-align:right;font-size:12px;color:var(--tg-muted);}",
+            ".badge{display:inline-flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:999px;border:1px solid var(--tg-border-subtle);font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;}",
+            ".summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px;}",
+            ".card{border-radius:12px;padding:12px 14px;border:1px solid var(--tg-border-subtle);background-color:var(--tg-surface);}",
+            ".card-title{font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:var(--tg-muted);margin-bottom:4px;}",
+            ".metric-main{display:flex;align-items:flex-end;gap:6px;margin-bottom:4px;}",
+            ".metric-value{font-size:24px;font-weight:600;}",
+            ".metric-unit{font-size:12px;color:var(--tg-muted);}",
+            ".metric-sub{font-size:12px;color:var(--tg-muted);}",
+            ".metric-pass{color:var(--tg-pass);}",
+            ".metric-fail{color:var(--tg-fail);}",
+            ".coverage-bar{margin-top:6px;height:6px;border-radius:999px;border:1px solid rgba(148,163,184,0.55);background-color:var(--tg-surface-alt);overflow:hidden;}",
+            ".coverage-bar-inner{height:100%;background-image:linear-gradient(90deg,#22c55e,#14b8a6);}",
+            ".toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:10px 0 16px;}",
+            ".toolbar-left{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;color:var(--tg-muted);}",
+            ".toolbar-right{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}",
+            ".filter-label{font-size:12px;color:var(--tg-muted);margin-right:4px;}",
+            ".filter-select,.filter-input{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--tg-border-subtle);background-color:var(--tg-surface);color:var(--tg-text);min-width:120px;}",
+            ".filter-input{min-width:230px;}",
+            "table{width:100%;border-collapse:collapse;font-size:14px;border-radius:12px;overflow:hidden;}",
+            "thead{background-color:var(--tg-surface-alt);border-bottom:1px solid var(--tg-border-subtle);}",
+            "th,td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(148,163,184,0.25);vertical-align:top;}",
+            "th{font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--tg-muted);white-space:nowrap;}",
+            "tbody tr:nth-child(even){background-color:var(--tg-surface-alt);}",
+            "tbody tr:hover{background-color:#e5e7eb33;}",
+            ".col-scenario{min-width:220px;}",
+            ".col-request{min-width:180px;}",
+            ".col-response{min-width:260px;}",
+            ".col-url{min-width:200px;}",
+            ".scenario-name{font-weight:500;margin-bottom:2px;}",
+            ".code-block{font-family:ui-monospace,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;font-size:13px;white-space:pre-wrap;word-break:break-word;}",
+            ".status-pill{display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;border:1px solid transparent;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;}",
+            ".status-success{border-color:var(--tg-status-success);box-shadow:0 0 0 1px rgba(34,197,94,0.35);}",
+            ".status-client{border-color:var(--tg-status-client);box-shadow:0 0 0 1px rgba(249,115,22,0.35);}",
+            ".status-server{border-color:var(--tg-status-server);box-shadow:0 0 0 1px rgba(239,68,68,0.35);}",
+            ".status-unknown{border-color:var(--tg-border-subtle);}",
+            ".result-badge{display:inline-flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:999px;border:1px solid transparent;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;}",
+            ".result-passed{border-color:var(--tg-pass);box-shadow:0 0 0 1px rgba(34,197,94,0.4);}",
+            ".result-failed{border-color:var(--tg-fail);box-shadow:0 0 0 1px rgba(239,68,68,0.4);}",
+            ".table-wrapper{border-radius:12px;border:1px solid var(--tg-border-subtle);background-color:var(--tg-surface);overflow:hidden;}",
+            ".empty-state{margin-top:16px;font-size:13px;color:var(--tg-muted);}",
+            ".uncovered{margin-top:20px;font-size:13px;}",
+            ".uncovered h2{font-size:14px;margin-bottom:8px;}",
+            ".uncovered ul{margin:0;padding-left:18px;}",
+            ".uncovered li{margin:2px 0;}",
+            ".footer-note{margin-top:14px;font-size:11px;color:var(--tg-muted);}",
+            "@media (max-width:768px){body{padding:16px;}th:nth-child(1),td:nth-child(1){display:none;}}",
             "</style>",
-            "</head><body id ='body'>",
-
-            "<h2>API Test Execution Report</h2>",
-            f"<p>Generated: {timestamp}</p>",
-            f"<div class='auth-info'><strong>Authentication:</strong> {html.escape(auth_info)}</div>",
-            f"<h3>Test Coverage: {coverage:.2f}%</h3>",
-
-            # --------------------------------
-            # ⭐ TABLE STARTS HERE
-            # --------------------------------
-            "<table id='resultsTable'>",
-
-            "<tr>"
-            "<th>S.No</th>"
-            "<th>Scenario</th>"
-            "<th>Request Body</th>"
-            "<th>Response</th>"
-            "<th>Status Code</th>"
-            "<th>HTTP Request</th>"
-            "<th>Method</th>"
-            "<th>"
-            "Result<br>"
-            "<select id='resultFilter' onchange='filterResults()'>"
-            "<option value='all'>All</option>"
-            "<option value='passed'>Passed</option>"
-            "<option value='failed'>Failed</option>"
-            "</select>"
-            "</th>"
-            "</tr>",
+            "</head>",
+            "<body>",
+            "<div class='container'>",
+            "<header class='header'>",
+            "<div class='header-main'>",
+            "<h1>API Test Execution Report</h1>",
+            "<p class='subtitle'>Execution results generated by Test-Genie</p>",
+            f"<p class='timestamp'>Generated at {timestamp}</p>",
+            "</div>",
+            "<div class='header-side'>",
+            "<div class='badge'>Execution Summary</div>",
+            f"<div style='margin-top:6px;'>Authentication: {html.escape(auth_info)}</div>",
+            "</div>",
+            "</header>",
         ]
 
-        # --------------------------------
-        # TABLE ROWS
-        # --------------------------------
-        for idx, r in enumerate(results):
-            scenario = r.get("scenario", "N/A")
-            request_body = r.get("request_body", "N/A")
+        html_output.extend(
+            [
+                "<section class='summary-grid'>",
+                "<div class='card'>",
+                "<div class='card-title'>Total Scenarios</div>",
+                "<div class='metric-main'>",
+                f"<div class='metric-value'>{total_tests}</div>",
+                "</div>",
+                "<div class='metric-sub'>All executed scenarios</div>",
+                "</div>",
+                "<div class='card'>",
+                "<div class='card-title'>Pass / Fail</div>",
+                "<div class='metric-main'>",
+                f"<div class='metric-value metric-pass'>{passed_tests}</div>",
+                f"<div class='metric-unit'>passed</div>",
+                "</div>",
+                f"<div class='metric-sub'><span class='metric-fail'>{failed_tests}</span> failed</div>",
+                "</div>",
+                "<div class='card'>",
+                "<div class='card-title'>Pass Rate</div>",
+                "<div class='metric-main'>",
+                f"<div class='metric-value'>{pass_rate:.1f}</div>",
+                "<div class='metric-unit'>%</div>",
+                "</div>",
+                f"<div class='metric-sub'>Based on {total_tests} scenarios</div>",
+                "</div>",
+                "<div class='card'>",
+                "<div class='card-title'>OpenAPI Coverage</div>",
+                "<div class='metric-main'>",
+                f"<div class='metric-value'>{coverage:.1f}</div>",
+                "<div class='metric-unit'>%</div>",
+                "</div>",
+                "<div class='coverage-bar'>",
+                f"<div class='coverage-bar-inner' style='width:{coverage:.1f}%;'></div>",
+                "</div>",
+                "<div class='metric-sub'>Endpoints and methods covered by tests</div>",
+                "</div>",
+                "</section>",
+            ]
+        )
 
-            status = r.get("response", r.get("error", "N/A"))
-            status_code = r.get("status", "N/A")
-            http_request = r.get("url", "N/A")
-            method = r.get("method", "N/A")
+        # Toolbar (filters)
+        html_output.extend(
+            [
+                "<section class='toolbar'>",
+                "<div class='toolbar-left'>",
+                f"<span>Showing {total_tests} scenario{'s' if total_tests != 1 else ''}</span>",
+                "</div>",
+                "<div class='toolbar-right'>",
+                "<label class='filter-label' for='resultFilter'>Result</label>",
+                "<select id='resultFilter' class='filter-select' onchange='filterResults()'>",
+                "<option value='all'>All</option>",
+                "<option value='passed'>Passed</option>",
+                "<option value='failed'>Failed</option>",
+                "</select>",
+                "<label class='filter-label' for='searchInput'>Search</label>",
+                "<input id='searchInput' class='filter-input' type='text' placeholder='Filter by scenario, method, or URL' oninput='filterResults()' />",
+                "</div>",
+                "</section>",
+            ]
+        )
 
-            result_flag = r.get("result", "N/A")
-            color = "green" if result_flag == "passed" else "red"
-
+        if results:
+            html_output.append("<div class='table-wrapper'>")
+            html_output.append("<table id='resultsTable'>")
             html_output.append(
-                f"<tr>"
-                f"<td>{idx + 1}</td>"
-                f"<td>{scenario}</td>"
-                f"<td><code>{request_body}</code></td>"
-                f"<td>{html.escape(str(status))}</td>"
-                f"<td>{status_code}</td>"
-                f"<td><code>{http_request}</code></td>"
-                f"<td>{method}</td>"
-                f"<td style='font-weight:bold; color:{color}'>{result_flag.upper()}</td>"
-                f"</tr>"
+                "<thead><tr>"
+                "<th>#</th>"
+                "<th class='col-scenario'>Scenario</th>"
+                "<th class='col-request'>Request Body</th>"
+                "<th class='col-response'>Response</th>"
+                "<th>Status</th>"
+                "<th class='col-url'>HTTP Request</th>"
+                "<th>Method</th>"
+                "<th>Result</th>"
+                "</tr></thead><tbody>"
             )
 
-        # Close table
-        html_output.append("</table>")
+            for idx, r in enumerate(results):
+                scenario = html.escape(str(r.get("scenario", "N/A")))
+                request_body_raw = r.get("request_body", "N/A")
+                request_body = html.escape(str(request_body_raw)) if request_body_raw is not None else "N/A"
+                response_value = r.get("response", r.get("error", "N/A"))
+                response_text = html.escape(str(response_value))
+                status_code = r.get("status", "N/A")
+                http_request = html.escape(str(r.get("url", "N/A")))
+                method = html.escape(str(r.get("method", "N/A")))
 
-        # --------------------------------
-        # ⭐ JAVASCRIPT FILTER
-        # --------------------------------
-        html_output.append("""
-        <script>
-        function filterResults() {
-            let filter = document.getElementById('resultFilter').value;
-            let table = document.getElementById('resultsTable');
-            let rows = table.getElementsByTagName('tr');
+                # Status classification
+                status_class = "status-unknown"
+                try:
+                    code_int = int(status_code)
+                    if 200 <= code_int < 300:
+                        status_class = "status-success"
+                    elif 400 <= code_int < 500:
+                        status_class = "status-client"
+                    elif 500 <= code_int < 600:
+                        status_class = "status-server"
+                except Exception:
+                    pass
 
-            for (let i = 1; i < rows.length; i++) {
-                let resultCell = rows[i].getElementsByTagName('td')[7];
-                if (!resultCell) continue;
+                result_flag = str(r.get("result", "N/A")).lower()
+                if result_flag == "passed":
+                    result_class = "result-badge result-passed"
+                    result_label = "PASSED"
+                elif result_flag == "failed":
+                    result_class = "result-badge result-failed"
+                    result_label = "FAILED"
+                else:
+                    result_class = "result-badge"
+                    result_label = html.escape(str(r.get("result", "N/A"))).upper()
 
-                let result = resultCell.textContent.trim().toLowerCase();
+                html_output.append(
+                    "<tr>"
+                    f"<td>{idx + 1}</td>"
+                    f"<td><div class='scenario-name'>{scenario}</div></td>"
+                    f"<td><div class='code-block'>{request_body}</div></td>"
+                    f"<td><div class='code-block'>{response_text}</div></td>"
+                    f"<td><span class='status-pill {status_class}'>{html.escape(str(status_code))}</span></td>"
+                    f"<td><div class='code-block'>{http_request}</div></td>"
+                    f"<td>{method}</td>"
+                    f"<td><span class='{result_class}'>{result_label}</span></td>"
+                    "</tr>"
+                )
 
-                if (filter === 'all' || filter === result) {
-                    rows[i].style.display = '';
-                } else {
-                    rows[i].style.display = 'none';
-                }
-            }
-        }
-        </script>
-        """)
+            html_output.append("</tbody></table></div>")
+        else:
+            html_output.append("<p class='empty-state'>No test results were produced.</p>")
 
-        # --------------------------------
-        # Uncovered endpoints
-        # --------------------------------
+        # Uncovered endpoints section
         if uncovered:
-            html_output.append("<h2>Uncovered Endpoints from OpenAPI Spec</h2><ul>")
+            html_output.append("<section class='uncovered'>")
+            html_output.append("<h2>Uncovered endpoints from OpenAPI spec</h2><ul>")
             for ep in uncovered:
-                html_output.append(f"<li>{ep}</li>")
-            html_output.append("</ul>")
+                html_output.append(f"<li>{html.escape(str(ep))}</li>")
+            html_output.append("</ul></section>")
+
+        # Footer note
+        html_output.append(
+            "<p class='footer-note'>"
+            "HTML and JUnit XML reports are saved under the "
+            "<code>test_reports</code> folder in your project."
+            "</p>"
+        )
+
+        # Filtering logic (by result + search)
+        html_output.append(
+            """
+<script>
+function filterResults() {
+  var filter = document.getElementById('resultFilter').value;
+  var searchInput = document.getElementById('searchInput');
+  var search = searchInput ? searchInput.value.toLowerCase() : "";
+  var table = document.getElementById('resultsTable');
+  if (!table) return;
+
+  var rows = table.getElementsByTagName('tr');
+  for (var i = 1; i < rows.length; i++) {
+    var cells = rows[i].getElementsByTagName('td');
+    if (!cells || cells.length === 0) continue;
+
+    var resultCell = cells[7];
+    var scenarioCell = cells[1];
+    var urlCell = cells[5];
+    var methodCell = cells[6];
+
+    var result = resultCell ? resultCell.textContent.trim().toLowerCase() : "";
+    var haystack = "";
+    if (scenarioCell) haystack += scenarioCell.textContent.toLowerCase() + " ";
+    if (urlCell) haystack += urlCell.textContent.toLowerCase() + " ";
+    if (methodCell) haystack += methodCell.textContent.toLowerCase();
+
+    var matchesResult = (filter === "all" || result === filter);
+    var matchesSearch = (!search || haystack.indexOf(search) !== -1);
+
+    rows[i].style.display = (matchesResult && matchesSearch) ? "" : "none";
+  }
+}
+</script>
+"""
+        )
+
+        html_output.append("</div></body></html>")
 
         full_html = "\n".join(html_output)
 
