@@ -274,7 +274,10 @@ class SchemaValidator:
             return None
             
         content = response_def.get("content", {})
+
         if not content:
+            if method.lower() == "delete" and status_code == 204:
+                return None
             schema = self.components.get("schemas").get("Error")
             return self._expand_schema(schema)
 
