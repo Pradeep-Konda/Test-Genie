@@ -364,7 +364,7 @@ class SchemaValidator:
                     actual = f"'{error.instance}' (type: {type(error.instance).__name__})"
                 
                 violations.append(SchemaViolation(
-                    path=path,
+                    path=path[2:],
                     message=error.message,
                     expected=expected,
                     actual=actual,
