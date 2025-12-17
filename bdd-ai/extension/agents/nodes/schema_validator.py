@@ -346,6 +346,8 @@ class SchemaValidator:
                 path = ".".join(str(p) for p in error.absolute_path) or "(root)"
                 
                 if "type" in error.schema:
+                    if error.schema["nullable"] and error.instance is None:
+                        continue
                     expected = f"type '{error.schema['type']}'"
                 elif "enum" in error.schema:
                     expected = f"one of {error.schema['enum']}"
