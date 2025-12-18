@@ -635,7 +635,7 @@ class TestExecutionNode:
                     violation_html += "<ul class='violation-list'>"
                     for v in violations[:3]:  # Show max 3 violations
                         path = html.escape(v.get("path", ""))
-                        msg = html.escape(v.get("message", "")[:50])
+                        msg = html.escape(v.get("message", "")[:100])
                         violation_html += f"<li class='violation-item'><code>{path}</code>: {msg}</li>"
                     if len(violations) > 3:
                         violation_html += f"<li class='violation-item'><em>...+{len(violations) - 3} more</em></li>"
@@ -870,7 +870,7 @@ function filterResults() {
     # ------------------------------------------------------------------
     # CORE EXECUTION
     # ------------------------------------------------------------------
-    def __call__(self, state, batch_size: int = 5):
+    def __call__(self, state, batch_size: int = 10):
         try:
             self.auth_handler = AuthHandler(state.project_path)
             
