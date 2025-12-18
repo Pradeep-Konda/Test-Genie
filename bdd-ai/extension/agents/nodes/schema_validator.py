@@ -345,7 +345,7 @@ class SchemaValidator:
             for error in validator.iter_errors(response_body):
                 path = ".".join(str(p) for p in error.absolute_path) or "(root)"
                 
-                if "type" in error.schema:
+                if "type" in error.message:
                     if error.schema["nullable"] and error.instance is None:
                         continue
                     expected = f"type '{error.schema['type']}'"
@@ -362,9 +362,11 @@ class SchemaValidator:
                     actual = f"type '{type(error.instance).__name__}'"
                 else:
                     actual = f"'{error.instance}' (type: {type(error.instance).__name__})"
+
+                print("appending into violations\n")
                 
                 violations.append(SchemaViolation(
-                    path=path[2:],
+                    path=path,
                     message=error.message,
                     expected=expected,
                     actual=actual,
