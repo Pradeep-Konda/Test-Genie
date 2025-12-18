@@ -233,10 +233,6 @@ export class BDDPanel {
         .top-right-btn:hover {
           background-color: var(--vscode-button-hoverBackground);
         }
-
-
-
-          }
         </style>
       </head>
       <body>
@@ -295,12 +291,10 @@ export class BDDPanel {
 
               const iframe = document.getElementById('reportFrame');
 
-              // CSS we want to force inside iframe
+              // Minimal CSS for iframe to normalize base styles without overriding report theme
               const forcedCss =
                 '<style>' +
-                'html, body, * { color: white !important; background-color: transparent !important; }' +
-                'select { color: black !important; background-color: white !important; }' +
-                'option { color: black !important; background-color: white !important; }' +
+                'html, body { margin: 0; padding: 0; }' +
                 '</style>';
 
 
@@ -337,7 +331,7 @@ export class BDDPanel {
                     const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                     if (iframeDoc && iframeDoc.head) {
                       const style = iframeDoc.createElement('style');
-                      style.innerHTML = 'html, body, * { color: white !important; background-color: transparent !important; }';
+                      style.innerHTML = 'html, body { margin: 0; padding: 0; }';
                       iframeDoc.head.appendChild(style);
                     }
                   } catch (e) {
