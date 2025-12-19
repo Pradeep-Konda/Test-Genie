@@ -180,6 +180,18 @@ export function activate(context: vscode.ExtensionContext) {
   const treeView = vscode.window.createTreeView("featureExplorer", {
     treeDataProvider: provider,
   });
+
+  treeView.onDidChangeVisibility((event) => {
+    if (event.visible) {
+      BDDPanel.show(
+        "🧠 BDD Feature Explorer\n\n" +
+        "• Select a `.feature` file to edit\n" +
+        "• Generate tests using AI\n" +
+        "• Run BDD tests directly from here"
+      );
+    }
+  });
+
   vscode.workspace.onDidChangeWorkspaceFolders(() => provider.refresh());
 
   treeView.onDidChangeSelection(async (event) => {
@@ -256,7 +268,7 @@ class FeatureTreeDataProvider
 
     const baseDir = element
       ? element.resourceUri!.fsPath
-      : workspace.uri.fsPath;
+      : path.join(workspace.uri.fsPath, "bdd_tests");
     if (!fs.existsSync(baseDir)) return [];
 
     const items: vscode.TreeItem[] = [];

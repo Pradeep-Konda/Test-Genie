@@ -17,14 +17,24 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "views": {
-      "explorer": [
-        {
-          "id": "featureExplorer",
-          "name": "Feature Explorer"
-        }
-      ]
-    },
+    "viewsContainers": {
+    "activitybar": [
+      {
+        "id": "bddFeatureContainer",
+        "title": "BDD",
+        "icon": "resources/agent.png"
+      }
+    ]
+  },
+  "views": {
+    "bddFeatureContainer": [
+      {
+        "id": "featureExplorer",
+        "name": "Feature Explorer",
+        "icon": "resources/agent.png"
+      }
+    ]
+  },
     "menus": {
     "view/item/context": [
       {

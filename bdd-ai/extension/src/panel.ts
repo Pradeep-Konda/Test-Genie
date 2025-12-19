@@ -5,7 +5,6 @@ export class BDDPanel {
   static currentPanel: BDDPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private featureText: string = "";
-  private _onRunClicked: ((featureText: string) => void) | undefined;
 
   setFilePath(filePath: string) {
   this.currentFilePath = filePath;
@@ -82,9 +81,9 @@ export class BDDPanel {
       }
     );
 
-    const newPanel = new BDDPanel(panel, featureText);
-    BDDPanel.currentPanel = newPanel;
-    return newPanel;
+    BDDPanel.currentPanel = new BDDPanel(panel, featureText);
+    BDDPanel.currentPanel.update(featureText);
+    return BDDPanel.currentPanel;
   }
 
   onDidClickRun(callback: (featureText: string) => void) {
@@ -101,7 +100,10 @@ export class BDDPanel {
 
   private update(featureText: string) {
     this.featureText = featureText;
-    this.panel.webview.html = this.getHtml(featureText);
+    this.panel.webview.postMessage({
+      type: "setFeatureText",
+      text: featureText,
+    });
   }
 
   private dispose() {
@@ -285,6 +287,10 @@ export class BDDPanel {
 
           window.addEventListener('message', (event) => {
             const message = event.data;
+            if (message.type === 'setFeatureText') {
+                featureTextEl.innerText = message.text;
+              }
+
             if (message.type === 'output') {
               const iframeHtml = '<iframe id="reportFrame" style="width:100%; height:100%; border:none;"></iframe>';
               outputEl.innerHTML = iframeHtml;
