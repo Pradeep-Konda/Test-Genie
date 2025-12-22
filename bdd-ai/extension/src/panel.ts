@@ -86,10 +86,6 @@ export class BDDPanel {
     return BDDPanel.currentPanel;
   }
 
-  onDidClickRun(callback: (featureText: string) => void) {
-    this._onRunClicked = callback;
-  }
-
   getFeatureText(): string {
     return this.featureText;
   }
