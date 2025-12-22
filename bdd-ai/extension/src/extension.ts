@@ -246,6 +246,17 @@ function getFeatureFiles(dir: string): string[] {
 }
 
 // Tree Provider
+
+class BddRootItem extends vscode.TreeItem {
+  constructor(public readonly resourceUri: vscode.Uri) {
+    super("bdd_tests", vscode.TreeItemCollapsibleState.Expanded);
+    this.tooltip = resourceUri.fsPath;
+    this.iconPath = new vscode.ThemeIcon("folder");
+    this.contextValue = "bdd_root";
+  }
+}
+
+
 class FeatureTreeDataProvider
   implements vscode.TreeDataProvider<vscode.TreeItem>
 {
@@ -266,10 +277,17 @@ class FeatureTreeDataProvider
     const workspace = vscode.workspace.workspaceFolders?.[0];
     if (!workspace) return [];
 
-    const baseDir = element
-      ? element.resourceUri!.fsPath
-      : path.join(workspace.uri.fsPath, "bdd_tests");
-    if (!fs.existsSync(baseDir)) return [];
+    // STEP 1: show bdd_tests as root
+    if (!element) {
+      const bddPath = path.join(workspace.uri.fsPath, "bdd_tests");
+      if (!fs.existsSync(bddPath)) return [];
+      return [new BddRootItem(vscode.Uri.file(bddPath))];
+    }
+
+// STEP 2: normal behavior for children
+const baseDir = element.resourceUri!.fsPath;
+if (!fs.existsSync(baseDir)) return [];
+
 
     const items: vscode.TreeItem[] = [];
 
