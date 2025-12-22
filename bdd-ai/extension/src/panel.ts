@@ -86,6 +86,8 @@ export class BDDPanel {
     return BDDPanel.currentPanel;
   }
 
+
+
   getFeatureText(): string {
     return this.featureText;
   }
@@ -96,10 +98,11 @@ export class BDDPanel {
 
   private update(featureText: string) {
     this.featureText = featureText;
-    this.panel.webview.postMessage({
-      type: "setFeatureText",
-      text: featureText,
-    });
+    this.panel.webview.html = this.getHtml(featureText);
+    // this.panel.webview.postMessage({
+    //   type: "setFeatureText",
+    //   text: featureText,
+    // });
   }
 
   private dispose() {
@@ -158,10 +161,7 @@ export class BDDPanel {
             outline: none;
           }
 
-          .keyword {
-            color: var(--vscode-editor-keywordForeground, #c586c0);
-            font-weight: bold;
-          }
+          
 
           button {
             background-color: var(--vscode-button-background);
@@ -231,6 +231,11 @@ export class BDDPanel {
         .top-right-btn:hover {
           background-color: var(--vscode-button-hoverBackground);
         }
+
+        .keyword {
+            color: var(--vscode-editor-keywordForeground, #c586c0);
+            font-weight: bold;
+          }
         </style>
       </head>
       <body>
