@@ -63,6 +63,13 @@ export function activate(context: vscode.ExtensionContext) {
 
         const workspacePath = workspace.uri.fsPath;
         const bddDir = path.join(workspacePath, "bdd_tests");
+
+        if (!fs.existsSync(bddDir)) {
+        vscode.window.showInformationMessage(
+          "ℹ️ No featurefiles available to save"
+        );
+        return;
+      }
         const versionsDir = path.join(workspacePath, "Versions");
 
         if (!fs.existsSync(versionsDir))
