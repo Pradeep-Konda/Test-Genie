@@ -212,7 +212,8 @@ export function activate(context: vscode.ExtensionContext) {
       const combined = features
         .map((f) => fs.readFileSync(f, "utf-8"))
         .join("\n\n");
-      BDDPanel.show(combined || "📁 No .feature files found.");
+      const panel = BDDPanel.show(combined || "📁 No .feature files found.");
+      panel.setFilePath(null);
     }
   });
 
