@@ -6,7 +6,7 @@ export class BDDPanel {
   private readonly panel: vscode.WebviewPanel;
   private featureText: string = "";
 
-  setFilePath(filePath: string) {
+  setFilePath(filePath: string | null) {
     this.currentFilePath = filePath;
   }
 
