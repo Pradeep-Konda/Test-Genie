@@ -243,9 +243,9 @@ button:hover {
   <div class="search-popup" id="searchPopup">
     <input id="searchBox" placeholder="🔎 Search Scenarios..." />
     <span class="match-count" id="matchCount">No Results</span>
-    <button id="prevMatch">↑</button>
-    <button id="nextMatch">↓</button>
-    <button id="closeSearch">✖</button>
+    <button id="prevMatch" title="Previous match (Shift + Enter)">↑</button>
+    <button id="nextMatch" title="Next match (Enter)">↓</button>
+    <button id="closeSearch" title="Close search (Esc)">✖</button>
   </div>
 </div>
 
@@ -288,6 +288,13 @@ function escapeHtml(text) {
 function highlightKeywords(text) {
   return text.replace(/(Feature:|Scenario:|Given |When |Then |And )/g,
     '<span class="keyword">$1</span>');
+}
+
+/* REINITIALIZE SEARCH STATE */
+function activateSearch() {
+  matches = [];
+  activeIndex = -1;
+  highlightMatches(searchBox.value.trim());
 }
 
 function highlightMatches(query) {
@@ -335,24 +342,36 @@ function move(delta) {
   scrollToActive();
 }
 
+/* ❌ CLOSE SEARCH */
 function closeSearch() {
   popup.style.display = 'none';
-  searchActive = false;
   featureTextEl.contentEditable = "true";
-  featureTextEl.innerHTML = highlightKeywords(escapeHtml(originalTextCache));
+  matches = [];
+  activeIndex = -1;
+  featureTextEl.innerHTML = highlightKeywords(
+    escapeHtml(originalTextCache)
+  );
 }
 
 /* Ctrl+F */
 window.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
     e.preventDefault();
     popup.style.display = 'flex';
     searchActive = true;
     featureTextEl.contentEditable = "false";
     searchBox.focus();
+    activateSearch();
   }
-  if (e.key === 'Escape' && searchActive) closeSearch();
-  if (searchActive && e.key === 'Enter') move(e.shiftKey ? -1 : 1);
+    
+  if (e.key === 'Escape' && popup.style.display === 'flex') {
+    closeSearch();
+  }
+
+  if (popup.style.display === 'flex' && e.key === 'Enter') {
+    e.preventDefault();
+    move(e.shiftKey ? -1 : 1);     // 🔥 SINGLE MOVE
+  }
 });
 
 searchBox.addEventListener('input', e => highlightMatches(e.target.value));
