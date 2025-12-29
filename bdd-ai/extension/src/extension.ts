@@ -285,12 +285,30 @@ class FeatureTreeDataProvider
     const workspace = vscode.workspace.workspaceFolders?.[0];
     if (!workspace) return [];
 
-    // STEP 1: show bdd_tests as root
+    // STEP 1: show bdd_tests AND Versions as root
     if (!element) {
+      const items: vscode.TreeItem[] = [];
+
       const bddPath = path.join(workspace.uri.fsPath, "bdd_tests");
-      if (!fs.existsSync(bddPath)) return [];
-      return [new BddRootItem(vscode.Uri.file(bddPath))];
+      if (fs.existsSync(bddPath)) {
+        items.push(new BddRootItem(vscode.Uri.file(bddPath)));
+      }
+
+      const versionsPath = path.join(workspace.uri.fsPath, "Versions");
+      if (fs.existsSync(versionsPath)) {
+        const versionsItem = new vscode.TreeItem(
+          "Versions",
+          vscode.TreeItemCollapsibleState.Expanded
+        );
+        versionsItem.resourceUri = vscode.Uri.file(versionsPath);
+        versionsItem.iconPath = new vscode.ThemeIcon("archive");
+        versionsItem.contextValue = "versions_root";
+        items.push(versionsItem);
+      }
+
+      return items;
     }
+
 
 // STEP 2: normal behavior for children
 const baseDir = element.resourceUri!.fsPath;
