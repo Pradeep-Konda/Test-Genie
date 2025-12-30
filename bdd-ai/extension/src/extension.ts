@@ -86,6 +86,9 @@ export function activate(context: vscode.ExtensionContext) {
           `📦 Version saved: ${path.basename(versionFolder)}`
         );
 
+        vscode.commands.executeCommand("featureExplorer.refresh");
+
+
       } catch (err: any) {
         vscode.window.showErrorMessage("❌ Failed to save version: " + err.message);
       }
@@ -187,6 +190,7 @@ export function activate(context: vscode.ExtensionContext) {
   const treeView = vscode.window.createTreeView("featureExplorer", {
     treeDataProvider: provider,
   });
+  
 
   treeView.onDidChangeVisibility((event) => {
     if (event.visible) {
