@@ -198,7 +198,8 @@ export function activate(context: vscode.ExtensionContext) {
         "🧠 BDD Feature Explorer\n\n" +
         "• Select a `.feature` file to edit\n" +
         "• Generate tests using AI\n" +
-        "• Run BDD tests directly from here"
+        "• Run BDD tests directly from here",
+        true
       );
     }
   });
