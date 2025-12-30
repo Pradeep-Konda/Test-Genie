@@ -5,6 +5,7 @@ export class BDDPanel {
   static currentPanel: BDDPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private featureText: string = "";
+  private isPlaceholder: boolean = true;
 
   setFilePath(filePath: string | null) {
     this.currentFilePath = filePath;
@@ -21,7 +22,7 @@ export class BDDPanel {
           this.featureText = message.text;
           break;
         case "run":
-          if (this.featureText){
+          if (!this.isPlaceholder && this.featureText){
             vscode.commands.executeCommand(
               "extension.executeBDD",
               this.featureText,
@@ -57,10 +58,10 @@ export class BDDPanel {
     this.panel.onDidDispose(() => this.dispose());
   }
 
-  static show(featureText: string) {
+  static show(featureText: string, isPlaceholder: boolean = false): BDDPanel {
     if (BDDPanel.currentPanel) {
       BDDPanel.currentPanel.panel.reveal(vscode.ViewColumn.One);
-      BDDPanel.currentPanel.update(featureText);
+      BDDPanel.currentPanel.update(featureText, isPlaceholder);
       return BDDPanel.currentPanel;
     }
 
@@ -75,7 +76,7 @@ export class BDDPanel {
     );
 
     BDDPanel.currentPanel = new BDDPanel(panel, featureText);
-    BDDPanel.currentPanel.update(featureText);
+    BDDPanel.currentPanel.update(featureText, isPlaceholder);
     return BDDPanel.currentPanel;
   }
 
@@ -87,8 +88,9 @@ export class BDDPanel {
     this.panel.webview.postMessage({ type: "output", output });
   }
 
-  private update(featureText: string) {
+  private update(featureText: string, isPlaceholder: boolean = false) {
     this.featureText = featureText;
+    this.isPlaceholder = isPlaceholder;
     this.panel.webview.html = this.getHtml(featureText);
   }
 
