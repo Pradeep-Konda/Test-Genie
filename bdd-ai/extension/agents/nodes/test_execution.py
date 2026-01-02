@@ -20,6 +20,7 @@ import html
 import xml.etree.ElementTree as ET
 from .auth_handler import AuthHandler
 from .schema_validator import SchemaValidator
+from urllib.parse import urlparse
 
 
 
@@ -854,7 +855,111 @@ function filterResults() {
             print(f"[TEST] Warning: Failed to generate JUnit XML report: {e}", file=sys.stderr, flush=True)
             return None
     
+    def _get_base_url_from_spec(self, spec: Dict[str, Any]) -> str:
+        servers = spec.get("servers", [])
+        if not servers:
+            raise ValueError("No servers defined in OpenAPI spec")
+        return servers[0]["url"].rstrip("/")
+
     
+    def _extract_http_call(self, scenario_text: str):
+        method = None
+        url = None
+        body = None
+
+        for line in scenario_text.splitlines():
+            line = line.strip()
+
+            # STRICTLY match WHEN lines only
+            if not line.lower().startswith("when"):
+                continue
+
+            # Case 1: When I POST to /path
+            m = re.match(
+                r"When\s+I\s+(GET|POST|PUT|DELETE|PATCH)\s+to\s+(/[\w\-\/{}]+)",
+                line,
+                re.IGNORECASE
+            )
+            if m:
+                method = m.group(1).upper()
+                url = m.group(2)
+                break
+
+            # Case 2: When I POST /path
+            m = re.match(
+                r"When\s+I\s+(GET|POST|PUT|DELETE|PATCH)\s+(/[\w\-\/{}]+)",
+                line,
+                re.IGNORECASE
+            )
+            if m:
+                method = m.group(1).upper()
+                url = m.group(2)
+                break
+
+            # Case 3: legacy
+            m = re.match(
+                r"When\s+I\s+send\s+a\s+(GET|POST|PUT|DELETE|PATCH)\s+request\s+to\s+(/[\w\-\/{}]+)",
+                line,
+                re.IGNORECASE
+            )
+            if m:
+                method = m.group(1).upper()
+                url = m.group(2)
+                break
+
+        # OPTIONAL: extract body if present
+        for line in scenario_text.splitlines():
+            if "payload" in line.lower() or "body:" in line.lower():
+                body = None  # keep as None, payload handled elsewhere
+                break
+
+        if not method or not url:
+            raise ValueError(
+                f"HTTP method or URL not found.\nScenario:\n{scenario_text}"
+            )
+
+        return method, url, body
+
+    def _extract_expected_status(self, scenario_text: str):
+        rules = []
+
+        for line in scenario_text.splitlines():
+            l = line.lower()
+
+            if "status should be in range" in l:
+                nums = list(map(int, re.findall(r"\d+", l)))
+                rules.append(("range", nums[0], nums[1]))
+
+            elif "status should be" in l and "or" in l:
+                nums = list(map(int, re.findall(r"\d+", l)))
+                rules.append(("or", nums))
+
+            elif "status should be" in l:
+                num = int(re.findall(r"\d+", l)[0])
+                rules.append(("exact", num))
+
+            elif "should succeed" in l:
+                rules.append(("range", 200, 299))
+
+            elif "should fail" in l:
+                rules.append(("range", 400, 599))
+
+        return rules
+    
+    def _validate_status(self, actual: int, rules: List):
+        if not rules:
+            return True
+
+        for rule in rules:
+            if rule[0] == "exact" and actual != rule[1]:
+                return False
+            if rule[0] == "or" and actual not in rule[1]:
+                return False
+            if rule[0] == "range" and not (rule[1] <= actual <= rule[2]):
+                return False
+
+        return True
+
     # ------------------------------------------------------------------
     # CORE EXECUTION
     # ------------------------------------------------------------------
@@ -877,6 +982,7 @@ function filterResults() {
                     state.analysis = json.load(f)
 
             self.schema_validator = SchemaValidator(state.analysis)
+            base_url = self._get_base_url_from_spec(state.analysis)
 
             # Remove Feature: lines
             cleaned_text = re.sub(r"^\s*Feature:.*$", "", state.feature_text, flags=re.MULTILINE)
@@ -914,92 +1020,61 @@ function filterResults() {
                     "text": full_scenario,
                 })
 
+            results = []
 
-
-            all_results = []
-            all_curls = []
-
-            for i in range(0, len(scenarios), batch_size):
-                batch = scenarios[i:i + batch_size]
-
-                messages = [
-                    SystemMessage(content=self.system_prompt),
-                    HumanMessage(
-                        content=(
-                            "Execute these scenarios and return only JSON.\n"
-                            "\n"
-                            "----- OPENAPI SPEC START -----\n"
-                            f"{state.analysis}\n"
-                            "----- OPENAPI SPEC END -----\n"
-                            "\n"
-                            "----- SCENARIOS START -----\n"
-                            + "\n\n".join([s["text"] for s in batch]) +
-                            "\n----- SCENARIOS END -----"
-                        )
-                    ),
-                ]
-
-                result = self.agent.invoke({"messages": messages})
-
-                if isinstance(result, dict) and "messages" in result:
-                    ai_messages = [
-                        msg for msg in result["messages"]
-                        if getattr(msg, "type", None) == "ai"
-                        or msg.__class__.__name__ == "AIMessage"
-                    ]
-                    content = ai_messages[-1].content.strip() if ai_messages else ""
-                elif hasattr(result, "content"):
-                    content = result.content.strip()
-                elif isinstance(result, str):
-                    content = result.strip()
-                else:
-                    content = str(result).strip()
-
-                # Fix: Extract JSON safely even if extra text is added
+            for scenario in scenarios:
+                scenario_name = scenario["name"]
+                full_scenario = scenario["text"]
                 try:
-                    parsed = json.loads(content)
-                except:
-                    # Greedy JSON extractor: handles nested content reliably
-                    match = re.search(r"\{(?:[^{}]|(?R))*\}", content, re.DOTALL)
-                    if not match:
-                        parsed = None
-                    else:
-                        parsed = json.loads(match.group(0))
+                    method, url, body = self._extract_http_call(full_scenario)
+                    expectations = self._extract_expected_status(full_scenario)
 
-                if not parsed:
-                    all_results.append({"error": "Agent returned invalid JSON"})
-                    continue
-
-                #all_results.extend(parsed.get("results", []))
-
-                returned_results = parsed.get("results", [])
-
-                for idx, r in enumerate(returned_results):
-                    url = r.get("url", "")
-                    method = r.get("method", "GET")
-                    status_code = r.get("status", 0)
-                    response_body = r.get("response", {})
-                    
-                    schema_result = self._validate_response_schema(
-                        url=url,
+                    response = self._run_curl_command(
                         method=method,
-                        status_code=status_code,
+                        url=url,
+                        base_url=base_url,
+                        body=body
+                    )
+
+                    status = response.get("status", 0)
+                    response_body = response.get("response")
+
+                    passed = self._validate_status(status, expectations)
+
+                    schema_result = self._validate_response_schema(
+                        url=response["url"],
+                        method=method,
+                        status_code=status,
                         response_body=response_body
                     )
-                    r["schema_validation"] = schema_result
-                    
                     if schema_result.get("schema_found") and not schema_result.get("schema_valid"):
-                        r["result"] = "failed"
-                        r["schema_failure"] = True
-                    all_results.append(r)
+                        passed = False
 
+                    results.append({
+                        "scenario": scenario_name,
+                        "request_body": body,
+                        "url": response["url"],
+                        "method": method,
+                        "status": status,
+                        "response": response_body,
+                        "schema_validation": schema_result,
+                        "result": "passed" if passed else "failed"
+                    })
 
-
-                all_curls.extend(parsed.get("curl_commands", []))
+                except Exception as e:
+                    results.append({
+                        "scenario": scenario_name,
+                        "request_body": None,
+                        "url": "",
+                        "method": "",
+                        "status": 0,
+                        "response": str(e),
+                        "result": "failed"
+                    })
 
             final_input = json.dumps({
-                "results": all_results,
-                "curl_commands": all_curls
+                "results": results,
+                "curl_commands": []
             })
 
             report_json = self._generate_html_report(state, final_input)
@@ -1009,3 +1084,99 @@ function filterResults() {
             state.execution_output = {"error": str(e)}
 
         return state
+
+
+
+        #     all_results = []
+        #     all_curls = []
+
+        #     for i in range(0, len(scenarios), batch_size):
+        #         batch = scenarios[i:i + batch_size]
+
+        #         messages = [
+        #             SystemMessage(content=self.system_prompt),
+        #             HumanMessage(
+        #                 content=(
+        #                     "Execute these scenarios and return only JSON.\n"
+        #                     "\n"
+        #                     "----- OPENAPI SPEC START -----\n"
+        #                     f"{state.analysis}\n"
+        #                     "----- OPENAPI SPEC END -----\n"
+        #                     "\n"
+        #                     "----- SCENARIOS START -----\n"
+        #                     + "\n\n".join([s["text"] for s in batch]) +
+        #                     "\n----- SCENARIOS END -----"
+        #                 )
+        #             ),
+        #         ]
+
+        #         result = self.agent.invoke({"messages": messages})
+
+        #         if isinstance(result, dict) and "messages" in result:
+        #             ai_messages = [
+        #                 msg for msg in result["messages"]
+        #                 if getattr(msg, "type", None) == "ai"
+        #                 or msg.__class__.__name__ == "AIMessage"
+        #             ]
+        #             content = ai_messages[-1].content.strip() if ai_messages else ""
+        #         elif hasattr(result, "content"):
+        #             content = result.content.strip()
+        #         elif isinstance(result, str):
+        #             content = result.strip()
+        #         else:
+        #             content = str(result).strip()
+
+        #         # Fix: Extract JSON safely even if extra text is added
+        #         try:
+        #             parsed = json.loads(content)
+        #         except:
+        #             # Greedy JSON extractor: handles nested content reliably
+        #             match = re.search(r"\{(?:[^{}]|(?R))*\}", content, re.DOTALL)
+        #             if not match:
+        #                 parsed = None
+        #             else:
+        #                 parsed = json.loads(match.group(0))
+
+        #         if not parsed:
+        #             all_results.append({"error": "Agent returned invalid JSON"})
+        #             continue
+
+        #         #all_results.extend(parsed.get("results", []))
+
+        #         returned_results = parsed.get("results", [])
+
+        #         for idx, r in enumerate(returned_results):
+        #             url = r.get("url", "")
+        #             method = r.get("method", "GET")
+        #             status_code = r.get("status", 0)
+        #             response_body = r.get("response", {})
+                    
+        #             schema_result = self._validate_response_schema(
+        #                 url=url,
+        #                 method=method,
+        #                 status_code=status_code,
+        #                 response_body=response_body
+        #             )
+        #             r["schema_validation"] = schema_result
+                    
+        #             if schema_result.get("schema_found") and not schema_result.get("schema_valid"):
+        #                 r["result"] = "failed"
+        #                 r["schema_failure"] = True
+        #             all_results.append(r)
+
+
+
+        #         all_curls.extend(parsed.get("curl_commands", []))
+
+        #     final_input = json.dumps({
+        #         "results": all_results,
+        #         "curl_commands": all_curls
+        #     })
+
+        #     report_json = self._generate_html_report(state, final_input)
+        #     state.execution_output = json.loads(report_json).get("execution_output")
+
+        # except Exception as e:
+        #     state.execution_output = {"error": str(e)}
+
+        # return state
