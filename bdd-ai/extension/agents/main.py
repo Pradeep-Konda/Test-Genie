@@ -2,8 +2,8 @@ import io
 from nodes.code_analysis import CodeAnalysisNode
 from nodes.bdd_generation import BDDGenerationNode
 from nodes.test_execution import TestExecutionNode
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, List
 import json
 import sys
 import os
@@ -11,11 +11,26 @@ import os
 
 @dataclass
 class GraphState:
+    """
+    State object passed through the BDD generation pipeline.
+    
+    Attributes:
+        project_path: Path to the project being analyzed
+        analysis: OpenAPI specification (YAML string)
+        feature_text: Generated Gherkin test scenarios
+        execution_output: Test execution results (HTML report)
+        report_message: Status message for reporting
+        evaluation_result: Final BDD quality evaluation from LLM judge
+        evaluation_history: List of evaluations from each iteration (for tracking improvement)
+    """
     project_path: str
     analysis: Optional[str] = None
     feature_text: Optional[str] = None
     execution_output: Optional[str] = None
     report_message: Optional[str] = None
+    # LLM-as-Judge evaluation fields
+    evaluation_result: Optional[Dict[str, Any]] = None
+    evaluation_history: Optional[List[Dict[str, Any]]] = None
 
 
 
@@ -52,10 +67,20 @@ if __name__ == "__main__":
     try:
         if phase == "generate":
             gen_state = run_generation_phase(state)
-            print(json.dumps({
+            
+            # Build output with evaluation results if available
+            output = {
                 "analysis": gen_state.analysis,
                 "feature_text": gen_state.feature_text
-            }))
+            }
+            
+            # Include LLM-as-Judge evaluation results
+            if gen_state.evaluation_result:
+                output["evaluation_result"] = gen_state.evaluation_result
+            if gen_state.evaluation_history:
+                output["evaluation_history"] = gen_state.evaluation_history
+            
+            print(json.dumps(output))
         elif phase == "execute":
             feature_temp = sys.argv[3]
             if os.path.exists(feature_temp):
