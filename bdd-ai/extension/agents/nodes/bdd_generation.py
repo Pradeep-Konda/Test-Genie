@@ -2,12 +2,15 @@ import os
 import sys
 import re
 from datetime import datetime
+from typing import Optional, List
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import Tool
 from langchain_core.messages import SystemMessage, HumanMessage
 
+# Import the BDD Evaluator for feedback loop
+from .bdd_evaluator import BDDEvaluator, EvaluationResult
 
 
 class BDDGenerationNode:
@@ -47,6 +50,27 @@ class BDDGenerationNode:
         load_dotenv()
         self.output_dir = output_dir
         model = os.getenv("MODEL", "gpt-4.1")
+        
+        # ------------------------------------------------------------------
+        # Feedback Loop Configuration (LLM-as-Judge)
+        # ------------------------------------------------------------------
+        self.feedback_loop_enabled = os.getenv("BDD_ENABLE_FEEDBACK_LOOP", "true").lower() == "true"
+        self.max_iterations = int(os.getenv("BDD_MAX_ITERATIONS", "3"))
+        self.quality_threshold = float(os.getenv("BDD_QUALITY_THRESHOLD", "0.8"))
+        
+        # Initialize the BDD Evaluator (LLM Judge)
+        self.evaluator: Optional[BDDEvaluator] = None
+        if self.feedback_loop_enabled:
+            try:
+                self.evaluator = BDDEvaluator()
+                print(f"[BDD] Feedback loop enabled: max_iterations={self.max_iterations}, threshold={self.quality_threshold}", 
+                      file=sys.stderr)
+            except Exception as e:
+                print(f"[BDD] Warning: Could not initialize evaluator: {e}", file=sys.stderr)
+                self.evaluator = None
+        
+        # Store evaluation history for reporting
+        self.evaluation_history: List[EvaluationResult] = []
 
         try:
             self.llm = ChatOpenAI(model=model, temperature=0) if ChatOpenAI else None
@@ -72,11 +96,6 @@ class BDDGenerationNode:
                         "7 Do not omit any endpoint.\n"
                         "8 Start the response directly with `Feature:` — no text before that."
                     )
-        #  self.system_prompt = (
-        #         "Convert the given OpenAPI spec into pure Gherkin features. "
-                
-        #         "Return ONLY valid Gherkin text without explanations."
-        #     )
 
             try:
                 self.agent = (
@@ -89,10 +108,8 @@ class BDDGenerationNode:
                         else None
                         )
             except Exception as e:
-                       
                         self.agent = None
         except Exception as e:
-        
             self.llm = None
             self.agent = None
 
@@ -360,16 +377,115 @@ class BDDGenerationNode:
         return written
 
     # ------------------------------------------------------------------
+    # Generate initial Gherkin scenarios from OpenAPI spec
+    # ------------------------------------------------------------------
+    def _generate_initial(self, openapi_spec: str) -> str:
+        """
+        Generate the initial Gherkin scenarios from OpenAPI spec.
+        
+        Args:
+            openapi_spec: The OpenAPI specification string
+            
+        Returns:
+            Generated Gherkin text
+        """
+        try:
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(
+                    content=f"Generate advanced BDD test cases (in Gherkin) for this OpenAPI 3.0 spec:\n\n{openapi_spec}"
+                )
+            ]
+            
+            result = self.agent.invoke({"messages": messages})
+            
+            # Normalize outputs
+            if isinstance(result, dict) and "messages" in result:
+                ai_messages = [
+                    msg for msg in result["messages"]
+                    if getattr(msg, "type", None) == "ai" or msg.__class__.__name__ == "AIMessage"
+                ]
+                return ai_messages[-1].content.strip() if ai_messages else ""
+            elif hasattr(result, "content"):
+                return result.content.strip()
+            elif isinstance(result, str):
+                return result.strip()
+            else:
+                return str(result or "").strip()
+                
+        except Exception as e:
+            print(f"[BDD] Error in initial generation: {e}", file=sys.stderr)
+            raise
+    
+    # ------------------------------------------------------------------
+    # Generate refined Gherkin based on feedback
+    # ------------------------------------------------------------------
+    def _generate_refined(
+        self, 
+        openapi_spec: str, 
+        current_gherkin: str, 
+        feedback: EvaluationResult
+    ) -> str:
+        """
+        Generate refined Gherkin scenarios based on evaluation feedback.
+        
+        Args:
+            openapi_spec: The OpenAPI specification string
+            current_gherkin: The current Gherkin scenarios to improve
+            feedback: The evaluation feedback with issues to address
+            
+        Returns:
+            Refined Gherkin text
+        """
+        try:
+            # Build refinement prompt using the evaluator's builder
+            refinement_prompt = self.evaluator.build_refinement_prompt(
+                openapi_spec, current_gherkin, feedback
+            )
+            
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(content=refinement_prompt)
+            ]
+            
+            result = self.agent.invoke({"messages": messages})
+            
+            # Normalize outputs
+            if isinstance(result, dict) and "messages" in result:
+                ai_messages = [
+                    msg for msg in result["messages"]
+                    if getattr(msg, "type", None) == "ai" or msg.__class__.__name__ == "AIMessage"
+                ]
+                return ai_messages[-1].content.strip() if ai_messages else ""
+            elif hasattr(result, "content"):
+                return result.content.strip()
+            elif isinstance(result, str):
+                return result.strip()
+            else:
+                return str(result or "").strip()
+                
+        except Exception as e:
+            print(f"[BDD] Error in refinement generation: {e}", file=sys.stderr)
+            # Return current gherkin if refinement fails
+            return current_gherkin
+
+    # ------------------------------------------------------------------
     # Main entrypoint used by the graph (main.py)
     # ------------------------------------------------------------------
     def __call__(self, state):
         """
+        Generate BDD test scenarios with optional LLM-as-Judge feedback loop.
+        
         state.analysis   = OpenAPI YAML (string)   ← from CodeAnalysisNode
         state.feature_text = combined Gherkin text ← we set here
+        state.evaluation_result = final evaluation ← we set here (if feedback loop enabled)
         """
         openapi_spec = getattr(state, "analysis", None)
+        
+        # Reset evaluation history for this run
+        self.evaluation_history = []
 
-        # sanity: if not OpenAPI-like, fallback to mock
+        # Sanity check: if not OpenAPI-like, fallback to mock
         if isinstance(openapi_spec, str):
             looks_like_openapi = bool(
                 re.search(r"openapi\s*:\s*3", openapi_spec, re.I)
@@ -384,38 +500,103 @@ class BDDGenerationNode:
             return state
 
         feature_text = None
+        final_evaluation = None
 
-        # ------------------ Call LLM agent ------------------
-        try:
-            messages = [
-                SystemMessage(content=self.system_prompt),
-                HumanMessage(
-                    content=f"Generate advanced BDD test cases (in Gherkin) for this OpenAPI 3.0 spec:\n\n{openapi_spec}"
-                )
-            ]
- 
-            result = self.agent.invoke({"messages": messages})
- 
-            # 🧠 Normalize outputs like CodeAnalysisNode
-            if isinstance(result, dict) and "messages" in result:
-                ai_messages = [
-                    msg for msg in result["messages"]
-                    if getattr(msg, "type", None) == "ai" or msg.__class__.__name__ == "AIMessage"
-                ]
-                feature_text = ai_messages[-1].content.strip() if ai_messages else ""
-            elif hasattr(result, "content"):
-                feature_text = result.content.strip()
-            elif isinstance(result, str):
-                feature_text = result.strip()
-            else:
-                feature_text = str(result or "").strip()
- 
-        except Exception as e:
-            print(f"⚠️ LLM Error in BDDGenerationNode: {e}")
-            feature_text = self._mock_bdd_generator(openapi_spec)
+        # ------------------------------------------------------------------
+        # FEEDBACK LOOP: Generate → Evaluate → Refine (repeat until quality)
+        # ------------------------------------------------------------------
+        if self.feedback_loop_enabled and self.evaluator:
+            print(f"[BDD] Starting generation with feedback loop (max {self.max_iterations} iterations)...", 
+                  file=sys.stderr)
+            
+            iteration = 0
+            feedback = None
+            
+            while iteration < self.max_iterations:
+                iteration += 1
+                
+                try:
+                    # Step 1: Generate or Refine
+                    if feature_text is None:
+                        print(f"[BDD] Iteration {iteration}: Initial generation...", file=sys.stderr)
+                        feature_text = self._generate_initial(openapi_spec)
+                    else:
+                        print(f"[BDD] Iteration {iteration}: Refining based on feedback...", file=sys.stderr)
+                        feature_text = self._generate_refined(openapi_spec, feature_text, feedback)
+                    
+                    # Step 2: Evaluate quality
+                    feedback = self.evaluator.evaluate(
+                        openapi_spec=openapi_spec,
+                        gherkin_text=feature_text,
+                        quality_threshold=self.quality_threshold,
+                        iteration=iteration
+                    )
+                    
+                    # Store evaluation in history
+                    self.evaluation_history.append(feedback)
+                    
+                    # Log progress
+                    print(f"[BDD] Iteration {iteration}: Score = {feedback.overall_score:.0%} "
+                          f"(threshold: {self.quality_threshold:.0%})", file=sys.stderr)
+                    
+                    # Step 3: Check if quality threshold met
+                    if feedback.passed or feedback.overall_score >= self.quality_threshold:
+                        print(f"[BDD] Quality threshold met at iteration {iteration}!", file=sys.stderr)
+                        final_evaluation = feedback
+                        break
+                    
+                    # Check for convergence (no improvement)
+                    if len(self.evaluation_history) >= 2:
+                        prev_score = self.evaluation_history[-2].overall_score
+                        curr_score = feedback.overall_score
+                        if curr_score <= prev_score:
+                            print(f"[BDD] No improvement detected, stopping at iteration {iteration}", 
+                                  file=sys.stderr)
+                            final_evaluation = feedback
+                            break
+                    
+                except Exception as e:
+                    print(f"[BDD] Error in iteration {iteration}: {e}", file=sys.stderr)
+                    if feature_text is None:
+                        # If we don't have any generated text, fallback to mock
+                        feature_text = self._mock_bdd_generator(openapi_spec)
+                    break
+            
+            # Use the last evaluation if we didn't set final_evaluation
+            if final_evaluation is None and self.evaluation_history:
+                final_evaluation = self.evaluation_history[-1]
+            
+            # Log improvement summary
+            if len(self.evaluation_history) > 1:
+                summary = self.evaluator.get_improvement_summary(self.evaluation_history)
+                print(f"[BDD] Improvement summary: {summary['initial_score']:.0%} → "
+                      f"{summary['final_score']:.0%} ({summary['improvement_percentage']:.1f}% improvement)", 
+                      file=sys.stderr)
+        
+        else:
+            # ------------------------------------------------------------------
+            # NO FEEDBACK LOOP: Single generation pass (original behavior)
+            # ------------------------------------------------------------------
+            try:
+                feature_text = self._generate_initial(openapi_spec)
+            except Exception as e:
+                print(f"[BDD] LLM Error: {e}", file=sys.stderr)
+                feature_text = self._mock_bdd_generator(openapi_spec)
 
-
-        # Save on state and write categorized .feature files
+        # ------------------------------------------------------------------
+        # Save results to state
+        # ------------------------------------------------------------------
         state.feature_text = feature_text
+        
+        # Store evaluation result if available (for downstream reporting)
+        if final_evaluation:
+            state.evaluation_result = final_evaluation.to_dict()
+        
+        # Store evaluation history for detailed analysis
+        if self.evaluation_history:
+            state.evaluation_history = [e.to_dict() for e in self.evaluation_history]
+        
+        # Write categorized .feature files
         self._write_tagged_features(state.project_path, feature_text)
+        
         return state
