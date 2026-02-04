@@ -1,9 +1,10 @@
 from typing import List, Optional, Any, Dict
 import html
 import xml.etree.ElementTree as ET
-import agents.utils.common as common
+import utils.common as common
 import sys
 import json
+import os
 from datetime import datetime
 import traceback
 
@@ -12,7 +13,7 @@ class ReportHandler:
     def __init__(self, auth_handler):
         self.auth_handler = auth_handler
 
-    def _generate_junit_xml_report(self, results: List[Dict]) -> Optional[str]:
+    def _generate_junit_xml_report(self, results: List[Dict], output_dir: str, timestamp: str) -> Optional[str]:
         """
         Generates a JUnit XML report for CI/CD integration.
 
@@ -104,6 +105,10 @@ class ReportHandler:
 
             xml_string = ET.tostring(testsuites, encoding="unicode", method="xml")
             xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_string
+
+            xml_path = os.path.join(output_dir, f"api_test_report_{timestamp}.xml")
+            with open(xml_path, "w", encoding="utf-8") as f:
+                f.write(xml_content)
             return xml_content
 
         except Exception as e:
@@ -229,7 +234,14 @@ class ReportHandler:
         self._last_coverage = coverage
         self._last_uncovered = uncovered
 
-        full_xml = self._generate_junit_xml_report(results)
+
+        output_dir = os.path.join(state.project_path, "test_reports")
+        os.makedirs(output_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
+
+        full_xml = self._generate_junit_xml_report(results, output_dir, timestamp)
 
         # --- Basic execution stats ---
         total_tests = len(results)
@@ -482,6 +494,9 @@ function filterResults() {
         html_output.append("</div></body></html>")
 
         full_html = "\n".join(html_output)
+
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(full_html)
 
         return json.dumps(
             {

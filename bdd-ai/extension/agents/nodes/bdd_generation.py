@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
-from nodes.prompts.prompt_loader_bdd import PromptLoader
+from prompts.prompt_loader_bdd import PromptLoader
 import traceback
 import json
 from langchain_openai import ChatOpenAI

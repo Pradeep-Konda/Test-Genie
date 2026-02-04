@@ -5,7 +5,7 @@ import traceback
 from pathspec import PathSpec
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from nodes.prompts.prompt_loader_bdd import PromptLoader
+from prompts.prompt_loader_bdd import PromptLoader
 
 class CodeAnalysisNode:
     def __init__(self):
