@@ -12,6 +12,8 @@ from utils.auth_handler import AuthHandler
 from utils.schema_validator import SchemaValidator
 from utils.report_handler import ReportHandler
 import utils.common as common
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class TestExecutionNode:
@@ -47,12 +49,12 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # AUTH STATUS
     # --------------------------------------------------------
-    def _log_auth_status(self, project_path):
+    async def _log_auth_status(self, project_path):
         try:
             self.auth_handler = AuthHandler(project_path)
-            if self.auth_handler.is_authenticated():
+            if await self.auth_handler.is_authenticated():
                 print(
-                    f"[TEST] Authentication: {self.auth_handler.get_auth_summary()}",
+                    f"[TEST] Authentication: {await self.auth_handler.get_auth_summary()}",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -68,17 +70,17 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # URL BUILDING
     # --------------------------------------------------------
-    def _build_url(self, method, url, base_url):
+    async def _build_url(self, method, url, base_url):
         try:
             final_url = url if url.startswith("http") else f"{base_url.rstrip('/')}/{url.lstrip('/')}"
 
             if not self.auth_handler:
                 return final_url
 
-            headers = self.auth_handler.get_auth_headers()
+            headers = await self.auth_handler.get_auth_headers()
             self._auth_headers = headers
 
-            auth_params = self.auth_handler.get_auth_query_params()
+            auth_params = await self.auth_handler.get_auth_query_params()
             if not auth_params:
                 return final_url
 
@@ -94,7 +96,7 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # RESPONSE PARSING
     # --------------------------------------------------------
-    def _parse_response(self, response):
+    async def _parse_response(self, response):
         status_code = response.status_code
         raw = response.text
 
@@ -109,7 +111,7 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # JSON BODY SAFE PARSER
     # --------------------------------------------------------
-    def _get_json_body(self, body):
+    async def _get_json_body(self, body):
         try:
             return json.loads(body)
         except Exception:
@@ -118,7 +120,7 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # FILE CONTENT TYPE
     # --------------------------------------------------------
-    def _get_content_type(self, filename):
+    async def _get_content_type(self, filename):
         try:
             if not filename:
                 raise ValueError("File name is empty")
@@ -139,7 +141,7 @@ class TestExecutionNode:
                 for item in resources:
                     if item.filename == value:
                         buffer = await item.read()
-                        content_type = self._get_content_type(item.filename)
+                        content_type = await self._get_content_type(item.filename)
                         files.append(
                             (key, (item.filename, buffer, content_type))
                         )
@@ -155,7 +157,7 @@ class TestExecutionNode:
         json_body = None
 
         try:
-            json_body = self._get_json_body(body)
+            json_body = await self._get_json_body(body)
 
             if content and content.get("multipart/form-data"):
                 file_flag = False
@@ -194,7 +196,7 @@ class TestExecutionNode:
             status_code = 0
 
             method = method.upper()
-            final_url = self._build_url(method, url, base_url)
+            final_url = await self._build_url(method, url, base_url)
 
             headers.update(self._auth_headers)
 
@@ -202,6 +204,7 @@ class TestExecutionNode:
                 content, body, headers, resources
             )
 
+            # print("[AUTH HEADERS SENT]", headers, file=sys.stderr)
             response = requests.request(
                 method=method,
                 url=final_url,
@@ -212,7 +215,7 @@ class TestExecutionNode:
                 timeout=10,
             )
 
-            result, status_code = self._parse_response(response)
+            result, status_code = await self._parse_response(response)
 
             return {
                 "url": final_url,
@@ -234,7 +237,7 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # OPENAPI SCHEMA VALIDATION
     # --------------------------------------------------------
-    def _validate_response_schema(
+    async def _validate_response_schema(
         self,
         url: str,
         method: str,
@@ -251,7 +254,7 @@ class TestExecutionNode:
             }
 
         try:
-            result = self.schema_validator.validate_response(
+            result = await self.schema_validator.validate_response(
                 endpoint=url,
                 method=method,
                 status_code=status_code,
@@ -278,7 +281,7 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # FEATURE FILE PREPROCESSING
     # --------------------------------------------------------
-    def _preprocess_feature_text(self, feature_text):
+    async def _preprocess_feature_text(self, feature_text):
         try:
             cleaned_text = re.sub(r"^\s*Feature:.*$", "", feature_text, flags=re.MULTILINE)
             cleaned_text = re.sub(r"^\s*#.*$", "", cleaned_text, flags=re.MULTILINE)
@@ -290,7 +293,7 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # Finding Spec file
     # --------------------------------------------------------
-    def _find_latest_openapi_spec(self, openapi_dir: str):
+    async def _find_latest_openapi_spec(self, openapi_dir: str):
         """Finds the newest OpenAPI spec file (.yaml or .json) in the outputs directory."""
         try:
             file_path = os.path.join(openapi_dir, "openapi.yaml")
@@ -304,7 +307,7 @@ class TestExecutionNode:
     # --------------------------------------------------------
     # SCENARIO PARSER
     # --------------------------------------------------------
-    def _parse_scenarios(self, cleaned_text):
+    async def _parse_scenarios(self, cleaned_text):
         try:
             scenarios = []
             current_tags = set()
@@ -357,9 +360,9 @@ class TestExecutionNode:
         is_negative = "@negative" in tags
 
         try:
-            method, url, body = common._extract_http_call(full_scenario)
-            expectations = common._extract_expected_status(full_scenario)
-            content = common._get_content_from_spec(
+            method, url, body = await common._extract_http_call(full_scenario)
+            expectations = await common._extract_expected_status(full_scenario)
+            content = await common._get_content_from_spec(
                 state.analysis, url, method, full_scenario
             )
 
@@ -375,13 +378,13 @@ class TestExecutionNode:
             status = response.get("status", 0)
             response_body = response.get("response", response.get("error"))
 
-            status_passed = common._validate_status(
+            status_passed = await common._validate_status(
                 actual_status=status,
                 expectations=expectations,
                 is_negative=is_negative,
             )
 
-            schema_result = self._validate_response_schema(
+            schema_result = await self._validate_response_schema(
                 url=response["url"],
                 method=method,
                 status_code=status,
@@ -422,13 +425,12 @@ class TestExecutionNode:
     # --------------------------------------------------------
     async def __call__(self, state, resources=None):
         try:
-            self._log_auth_status(state.project_path)
-
+            await self._log_auth_status(state.project_path)
             self.report_handler = ReportHandler(self.auth_handler)
 
             openapi_dir = os.path.join(state.project_path, "output")
 
-            filepath = self._find_latest_openapi_spec(openapi_dir)
+            filepath = await self._find_latest_openapi_spec(openapi_dir)
 
             with open(filepath, "r", encoding="utf-8") as f:
                 if filepath.endswith((".yaml", ".yml")):
@@ -438,10 +440,10 @@ class TestExecutionNode:
 
             self.schema_validator = SchemaValidator(state.analysis)
 
-            base_url = common._get_base_url_from_spec(state.analysis)
+            base_url = await common._get_base_url_from_spec(state.analysis)
 
-            cleaned_text = self._preprocess_feature_text(state.feature_text)
-            scenarios = self._parse_scenarios(cleaned_text)
+            cleaned_text = await self._preprocess_feature_text(state.feature_text)
+            scenarios = await self._parse_scenarios(cleaned_text)
 
             results = []
             for scenario in scenarios:
@@ -455,7 +457,7 @@ class TestExecutionNode:
                 "curl_commands": [],
             }
 
-            report_json = self.report_handler.generate_html_report(state, final_input)
+            report_json = await self.report_handler.generate_html_report(state, final_input)
             state.html_report = json.loads(report_json).get("html_report")
             state.xml_report = json.loads(report_json).get("xml_report")
             state.execution_output = state.html_report

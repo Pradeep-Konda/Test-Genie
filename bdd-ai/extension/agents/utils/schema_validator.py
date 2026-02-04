@@ -80,7 +80,7 @@ class SchemaValidator:
 # Helpers
 # =========================
 
-    def _normalize_path(self, endpoint: str) -> str:
+    async def _normalize_path(self, endpoint: str) -> str:
         parsed = urlparse(endpoint)
         path = parsed.path or endpoint
 
@@ -92,8 +92,8 @@ class SchemaValidator:
 
         return path.rstrip("/") or "/"
 
-    def _match_path(self, request_path: str) -> Optional[str]:
-        request_path = self._normalize_path(request_path)
+    async def _match_path(self, request_path: str) -> Optional[str]:
+        request_path = await self._normalize_path(request_path)
 
         if request_path in self.paths:
             return request_path
@@ -106,7 +106,7 @@ class SchemaValidator:
 
         return None
 
-    def _resolve_ref(self, ref: str) -> Optional[Dict[str, Any]]:
+    async def _resolve_ref(self, ref: str) -> Optional[Dict[str, Any]]:
         if not ref.startswith("#/"):
             return None
 
@@ -125,20 +125,20 @@ class SchemaValidator:
 # Schema Expansion
 # =========================
 
-    def _expanded_values(self, schema, _seen_refs):
+    async def _expanded_values(self, schema, _seen_refs):
         try:
             expanded = {}
             for key, value in schema.items():
                 if key == "properties" and isinstance(value, dict):
                     expanded[key] = {
-                        k: self._expand_schema(v, _seen_refs.copy())
+                        k: await self._expand_schema(v, _seen_refs.copy())
                         for k, v in value.items()
                     }
                 elif key == "items" and isinstance(value, dict):
-                    expanded[key] = self._expand_schema(value, _seen_refs.copy())
+                    expanded[key] = await self._expand_schema(value, _seen_refs.copy())
                 elif key in ("allOf", "oneOf", "anyOf") and isinstance(value, list):
                     expanded[key] = [
-                        self._expand_schema(v, _seen_refs.copy())
+                        await self._expand_schema(v, _seen_refs.copy())
                         for v in value
                     ]
                 else:
@@ -147,7 +147,7 @@ class SchemaValidator:
         except Exception:
             pass
 
-    def _expand_schema(
+    async def _expand_schema(
         self,
         schema: Dict[str, Any],
         _seen_refs: Optional[set] = None
@@ -163,17 +163,17 @@ class SchemaValidator:
             if ref in _seen_refs:
                 return schema
             _seen_refs.add(ref)
-            resolved = self._resolve_ref(ref)
-            return self._expand_schema(resolved, _seen_refs) if resolved else schema
+            resolved = await self._resolve_ref(ref)
+            return await self._expand_schema(resolved, _seen_refs) if resolved else schema
 
-        return self._expanded_values(schema, _seen_refs)
+        return await self._expanded_values(schema, _seen_refs)
 
 
 # =========================
 # Schema Navigation
 # =========================
 
-    def _is_nullable(self, schema_node: Dict[str, Any]) -> bool:
+    async def _is_nullable(self, schema_node: Dict[str, Any]) -> bool:
         if not isinstance(schema_node, dict):
             return False
 
@@ -187,7 +187,7 @@ class SchemaValidator:
 
         return False
 
-    def _get_schema_for_path(
+    async def _get_schema_for_path(
         self,
         root_schema: Dict[str, Any],
         path: List[Any]
@@ -211,14 +211,14 @@ class SchemaValidator:
         except Exception:
             return None
 
-    def _get_error_schema(self):
+    async def _get_error_schema(self):
         try:
             schema = self.components.get("schemas", {}).get("Error")
-            return self._expand_schema(schema) if schema else None
+            return await self._expand_schema(schema) if schema else None
         except Exception:
             return None
 
-    def _extract_json_schema(self, content):
+    async def _extract_json_schema(self, content):
         try:
             json_content = content.get("application/json")
             if not json_content:
@@ -235,14 +235,14 @@ class SchemaValidator:
 # Schema Fetchers
 # =========================
 
-    def _get_response_schema(
+    async def _get_response_schema(
         self,
         endpoint: str,
         method: str,
         status_code: int
     ) -> Optional[Dict[str, Any]]:
 
-        matched_path = self._match_path(endpoint)
+        matched_path = await self._match_path(endpoint)
         if not matched_path:
             return None
 
@@ -259,27 +259,26 @@ class SchemaValidator:
         )
 
         if not response_def:
-            return self._get_error_schema()
+            return await self._get_error_schema()
 
         content = response_def.get("content", {})
         if not content:
             if method.lower() == "delete" and status_code == 204:
                 return None
-            return self._get_error_schema()
+            return await self._get_error_schema()
 
-        schema = self._extract_json_schema(content)
+        schema = await self._extract_json_schema(content)
         if not schema:
             return None
+        return await self._expand_schema(schema)
 
-        return self._expand_schema(schema)
-
-    def _get_request_schema(
+    async def _get_request_schema(
         self,
         endpoint: str,
         method: str
     ) -> Optional[Dict[str, Any]]:
 
-        matched_path = self._match_path(endpoint)
+        matched_path = await self._match_path(endpoint)
         if not matched_path:
             return None
 
@@ -303,14 +302,14 @@ class SchemaValidator:
         if not schema:
             return None
 
-        return self._expand_schema(schema)
+        return await self._expand_schema(schema)
 
 
 # =========================
 # Violation Builder
 # =========================
 
-    def _get_violation(self, error, path, schema_node, instance):
+    async def _get_violation(self, error, path, schema_node, instance):
         try:
             if error.validator == "required":
                 return SchemaViolation(
@@ -364,7 +363,7 @@ class SchemaValidator:
 # Core Validation Logic
 # =========================
 
-    def _run_validation(
+    async def _run_validation(
         self,
         schema: Dict[str, Any],
         payload: Any
@@ -380,12 +379,12 @@ class SchemaValidator:
         for error in validator.iter_errors(payload):
             path = ".".join(str(p) for p in error.absolute_path) or "(root)"
             schema_node = (
-                self._get_schema_for_path(schema, list(error.absolute_path))
+                await self._get_schema_for_path(schema, list(error.absolute_path))
                 or error.schema
             )
             instance = error.instance
 
-            if instance is None and not self._is_nullable(schema_node):
+            if instance is None and not (await self._is_nullable(schema_node)):
                 violations.append(
                     SchemaViolation(
                         path=path,
@@ -397,7 +396,7 @@ class SchemaValidator:
                 )
                 continue
 
-            violation = self._get_violation(error, path, schema_node, instance)
+            violation = await self._get_violation(error, path, schema_node, instance)
             if violation:
                 violations.append(violation)
 
@@ -408,18 +407,18 @@ class SchemaValidator:
 # Public APIs
 # =========================
 
-    def validate_request(
+    async def validate_request(
         self,
         endpoint: str,
         method: str,
         request_body: Any
     ) -> ValidationResult:
 
-        schema = self._get_request_schema(endpoint, method)
+        schema = await self._get_request_schema(endpoint, method)
         if not schema:
             return ValidationResult(is_valid=True, schema_found=False, violations=[])
 
-        violations = self._run_validation(schema, request_body)
+        violations = await self._run_validation(schema, request_body)
 
         return ValidationResult(
             is_valid=len(violations) == 0,
@@ -427,7 +426,7 @@ class SchemaValidator:
             violations=violations
         )
 
-    def validate_response(
+    async def validate_response(
         self,
         endpoint: str,
         method: str,
@@ -435,11 +434,11 @@ class SchemaValidator:
         response_body: Any
     ) -> ValidationResult:
 
-        schema = self._get_response_schema(endpoint, method, status_code)
+        schema = await self._get_response_schema(endpoint, method, status_code)
         if not schema:
             return ValidationResult(is_valid=True, schema_found=False, violations=[])
 
-        violations = self._run_validation(schema, response_body)
+        violations = await self._run_validation(schema, response_body)
 
         return ValidationResult(
             is_valid=len(violations) == 0,
@@ -452,7 +451,7 @@ class SchemaValidator:
 # Report Formatter
 # =========================
 
-def format_violations_for_report(
+async def format_violations_for_report(
     violations: List[SchemaViolation]
 ) -> str:
 

@@ -7,13 +7,14 @@ import json
 import os
 from datetime import datetime
 import traceback
+from utils.auth_handler import AuthHandler
 
 class ReportHandler:
 
-    def __init__(self, auth_handler):
+    def __init__(self, auth_handler: AuthHandler):
         self.auth_handler = auth_handler
 
-    def _generate_junit_xml_report(self, results: List[Dict], output_dir: str, timestamp: str) -> Optional[str]:
+    async def _generate_junit_xml_report(self, results: List[Dict], output_dir: str, timestamp: str) -> Optional[str]:
         """
         Generates a JUnit XML report for CI/CD integration.
 
@@ -49,8 +50,9 @@ class ReportHandler:
             uncovered = getattr(self, "_last_uncovered", [])
 
             auth_info = "No authentication"
-            if self.auth_handler and self.auth_handler.is_authenticated():
-                auth_info = self.auth_handler.get_auth_summary()
+            if self.auth_handler and await self.auth_handler.is_authenticated():
+                auth_info = await self.auth_handler.get_auth_summary()
+
 
             suite_out = ET.SubElement(testsuite, "system-out")
             suite_out.text = (
@@ -120,7 +122,7 @@ class ReportHandler:
             )
             return None
 
-    def _get_schema_cell_for_html(self, schema_found, schema_valid, violations):
+    async def _get_schema_cell_for_html(self, schema_found, schema_valid, violations):
         try:
             if not schema_found:
                 schema_cell = (
@@ -145,7 +147,7 @@ class ReportHandler:
         except Exception:
             raise
 
-    def _get_status_class_for_html(self, status_code):
+    async def _get_status_class_for_html(self, status_code):
         status_class = "status-unknown"
         try:
             code_int = int(status_code)
@@ -159,7 +161,7 @@ class ReportHandler:
         except Exception:
             pass
 
-    def _get_result_attributes(self, r):
+    async def _get_result_attributes(self, r):
         try:
             result_flag = str(r.get("result", "N/A")).lower()
             if result_flag == "passed":
@@ -175,7 +177,7 @@ class ReportHandler:
         except Exception:
             raise
 
-    def _get_responses_for_html(self, idx, r):
+    async def _get_responses_for_html(self, idx, r):
         try:
             scenario = html.escape(str(r.get("scenario", "N/A")))
             request_body_raw = r.get("request_body", "N/A")
@@ -195,11 +197,11 @@ class ReportHandler:
             schema_valid = schema_validation.get("schema_valid", True)
             violations = schema_validation.get("violations", [])
 
-            schema_cell = self._get_schema_cell_for_html(
+            schema_cell = await self._get_schema_cell_for_html(
                 schema_found, schema_valid, violations
             )
-            status_class = self._get_status_class_for_html(status_code)
-            result_class, result_label = self._get_result_attributes(r)
+            status_class = await self._get_status_class_for_html(status_code)
+            result_class, result_label = await self._get_result_attributes(r)
 
             return (
                 "<tr>"
@@ -217,7 +219,7 @@ class ReportHandler:
         except Exception:
             raise
 
-    def generate_html_report(self, state, data):
+    async def generate_html_report(self, state, data):
         """Generates HTML report + returns the HTML content (VS Code receives it)."""
 
         results = data.get("results", [])
@@ -226,7 +228,7 @@ class ReportHandler:
         div_close = "</div>"
 
         # --- Calculate OpenAPI coverage ---
-        coverage, uncovered = common._calculate_openapi_coverage(
+        coverage, uncovered = await common._calculate_openapi_coverage(
             state.feature_text, state.analysis
         )
 
@@ -241,7 +243,7 @@ class ReportHandler:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         html_path = os.path.join(output_dir, f"api_test_report_{timestamp}.html")
 
-        full_xml = self._generate_junit_xml_report(results, output_dir, timestamp)
+        full_xml = await self._generate_junit_xml_report(results, output_dir, timestamp)
 
         # --- Basic execution stats ---
         total_tests = len(results)
@@ -255,8 +257,8 @@ class ReportHandler:
 
         # --- Get authentication info ---
         auth_info = "No authentication"
-        if self.auth_handler and self.auth_handler.is_authenticated():
-            auth_info = self.auth_handler.get_auth_summary()
+        if self.auth_handler and await self.auth_handler.is_authenticated():
+            auth_info = await self.auth_handler.get_auth_summary()
 
         html_output = [
             "<!DOCTYPE html>",
@@ -418,7 +420,7 @@ class ReportHandler:
             )
 
             for idx, r in enumerate(results):
-                record = self._get_responses_for_html(idx, r)
+                record = await self._get_responses_for_html(idx, r)
                 html_output.append(record)
 
             html_output.append("</tbody></table></div>")
