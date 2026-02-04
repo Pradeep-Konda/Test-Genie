@@ -34,7 +34,7 @@ class CodeAnalysisNode:
     #     except Exception:
     #         pass
     
-    def read_all_files(self, project_path: str, chunk_size: int = 15000):
+    async def read_all_files(self, project_path: str, chunk_size: int = 15000):
         """
         Reads project files recursively, honoring .gitignore rules.
         Splits files into safe chunks for LLM consumption.
@@ -199,7 +199,7 @@ class CodeAnalysisNode:
             
 
             try:
-                chunks = self.read_all_files(source_path)
+                chunks = await self.read_all_files(source_path)
             except Exception as e:
                 raise RuntimeError("Failed while reading all source files") from e
 

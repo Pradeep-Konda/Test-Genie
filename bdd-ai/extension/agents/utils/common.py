@@ -3,13 +3,13 @@ import re
 import json
 
 
-def _calculate_openapi_coverage(feature_text: str, spec):
+async def _calculate_openapi_coverage(feature_text: str, spec):
     """
     Computes OpenAPI test coverage based on the feature file content.
     Matches endpoints + methods defined in the spec.
     """
     try:
-        defined, normalized_candidates = path_matching(feature_text, spec)
+        defined, normalized_candidates = await path_matching(feature_text, spec)
         covered_set = set()
 
         for (method, openapi_path_only, pattern) in defined:
@@ -37,7 +37,7 @@ def _calculate_openapi_coverage(feature_text: str, spec):
         return 0.0, [f"Coverage calculation failed: {str(e)}"]
 
 
-def path_matching(feature_text: str, spec):
+async def path_matching(feature_text: str, spec):
     try:
         defined = []
 
@@ -76,14 +76,14 @@ def path_matching(feature_text: str, spec):
         raise
 
 
-def _get_base_url_from_spec(spec: Dict[str, Any]) -> str:
+async def _get_base_url_from_spec(spec: Dict[str, Any]) -> str:
     servers = spec.get("servers", [])
     if not servers:
         raise ValueError("No servers defined in OpenAPI spec")
     return servers[0]["url"].rstrip("/")
 
 
-def _get_content_from_spec(
+async def _get_content_from_spec(
     spec: Dict[str, Any],
     url: str,
     method: str,
@@ -91,7 +91,7 @@ def _get_content_from_spec(
 ):
     try:
         method = method.lower()
-        defined, normalized_candidates = path_matching(feature_text, spec)
+        defined, normalized_candidates = await path_matching(feature_text, spec)
 
         for (m, openapi_path_only, pattern) in defined:
             if m.lower() != method:
@@ -113,7 +113,7 @@ def _get_content_from_spec(
         raise RuntimeError("Unexpected error from _get_content_from_spec", e)
 
 
-def _extract_http_call(scenario_text: str):
+async def _extract_http_call(scenario_text: str):
     method = None
     url = None
     body = None
@@ -151,7 +151,7 @@ def _extract_http_call(scenario_text: str):
     return method, url, body
 
 
-def _get_rule_from_search(l):
+async def _get_rule_from_search(l):
     try:
         m = re.search(r"status(?: code)? should be (\d+)", l)
         if m:
@@ -168,7 +168,7 @@ def _get_rule_from_search(l):
         pass
 
 
-def _extract_expected_status(scenario_text: str):
+async def _extract_expected_status(scenario_text: str):
     rules = []
     patterns = [
         r"status(?: code)? should be (\d+)",
@@ -202,7 +202,7 @@ def _extract_expected_status(scenario_text: str):
         raise TypeError("Error in extract expected status", e)
 
 
-def _validate_status(
+async def _validate_status(
     actual_status: int,
     expectations: list,
     is_negative: bool

@@ -56,7 +56,7 @@ class BDDGenerationNode:
     # ---------------------------------------------------------------------
     # Fallback mock generator (used when LLM / OpenAPI is not available)
     # ---------------------------------------------------------------------
-    def _mock_bdd_generator(self) -> str:
+    async def _mock_bdd_generator(self) -> str:
         return """[PLACE HOLDER]
 Feature: Default API Endpoint
 
@@ -351,7 +351,7 @@ Scenario: SQL Injection attempt
             looks_like_openapi = False
 
         if not looks_like_openapi:
-            feature_text = self._mock_bdd_generator()
+            feature_text = await self._mock_bdd_generator()
             state.feature_text = feature_text
             self._write_tagged_features(state.project_path, feature_text)
             return state

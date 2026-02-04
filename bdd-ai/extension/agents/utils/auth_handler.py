@@ -72,7 +72,6 @@ class AuthHandler:
         self.project_path = project_path
 
         self._load_env()
-        self._detect_auth_type()
     
     def _load_env(self):
         
@@ -84,24 +83,24 @@ class AuthHandler:
         else:
             print(f"[AUTH] No .env file found at: {env_path}", file=sys.stderr, flush=True)
 
-    def _get_env_value(self, var_names: list, env: Dict) -> Optional[str]:
+    async def _get_env_value(self, var_names: list) -> Optional[str]:
         """
         Get environment variable value, checking multiple possible names.
         """
         for var in var_names:
-            value = env.get(var)
+            value = os.environ.get(var)
             if value:
                 return value
         return None
 
-    def _detect_auth_type(self, env: Dict):
+    async def _detect_auth_type(self):
         """
         Auto-detect authentication type based on env variables.
         Sets self.auth_type and self.auth_config.
         """
 
         # Bearer Token
-        bearer_token = self._get_env_value(self.BEARER_TOKEN_VARS, env)
+        bearer_token = await self._get_env_value(self.BEARER_TOKEN_VARS)
         if bearer_token:
             self.auth_type = "bearer"
             self.auth_config = {"token": bearer_token}
@@ -109,14 +108,14 @@ class AuthHandler:
             return
 
         # API Key
-        api_key = self._get_env_value(self.API_KEY_VARS, env)
+        api_key = await self._get_env_value(self.API_KEY_VARS)
         if api_key:
             header_name = (
-                self._get_env_value(self.API_KEY_HEADER_VARS, env)
+                await self._get_env_value(self.API_KEY_HEADER_VARS)
                 or "X-API-Key"
             )
             key_location = (
-                self._get_env_value(self.API_KEY_IN_VARS, env)
+                await self._get_env_value(self.API_KEY_IN_VARS)
                 or "header"
             )
 
@@ -135,8 +134,8 @@ class AuthHandler:
             return
 
         # Basic Auth
-        username = self._get_env_value(self.BASIC_USERNAME_VARS, env)
-        password = self._get_env_value(self.BASIC_PASSWORD_VARS, env)
+        username = await self._get_env_value(self.BASIC_USERNAME_VARS)
+        password = await self._get_env_value(self.BASIC_PASSWORD_VARS)
         if username and password:
             self.auth_type = "basic"
             self.auth_config = {
@@ -155,11 +154,12 @@ class AuthHandler:
         self.auth_config = {}
         print("[AUTH] No authentication configured", file=sys.stderr, flush=True)
 
-    def get_auth_headers(self) -> Dict[str, str]:
+    async def get_auth_headers(self) -> Dict[str, str]:
         """
         Get authentication headers to inject into HTTP requests.
         """
         headers = {}
+        await self._detect_auth_type()
 
         if self.auth_type == "bearer":
             token = self.auth_config.get("token", "")
@@ -184,11 +184,12 @@ class AuthHandler:
 
         return headers
 
-    def get_auth_query_params(self) -> Dict[str, str]:
+    async def get_auth_query_params(self) -> Dict[str, str]:
         """
         Get authentication query parameters (for API keys in query string).
         """
         params = {}
+        await self._detect_auth_type()
 
         if self.auth_type == "apikey":
             key_location = self.auth_config.get("in", "header")
@@ -198,10 +199,12 @@ class AuthHandler:
 
         return params
 
-    def get_auth_summary(self) -> str:
+    async def get_auth_summary(self) -> str:
         """
         Get a human-readable summary of the current auth configuration.
         """
+        await self._detect_auth_type()
+
         if self.auth_type == "bearer":
             token = self.auth_config.get("token", "")
             masked = token[:10] + "..." + token[-4:] if len(token) > 20 else "****"
@@ -220,14 +223,16 @@ class AuthHandler:
 
         return "No authentication configured"
 
-    def is_authenticated(self) -> bool:
+    async def is_authenticated(self) -> bool:
         """
         Check if any authentication is configured.
         """
+        await self._detect_auth_type()
         return self.auth_type is not None
 
-    def get_auth_type(self) -> Optional[str]:
+    async def get_auth_type(self) -> Optional[str]:
         """
         Get the detected authentication type.
         """
+        await self._detect_auth_type()
         return self.auth_type
