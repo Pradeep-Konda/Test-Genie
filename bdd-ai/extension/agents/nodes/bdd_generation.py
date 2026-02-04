@@ -3,11 +3,11 @@ import sys
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
-from langchain_core.tools import Tool
 from langchain_core.messages import SystemMessage, HumanMessage
-
+from prompts.prompt_loader_bdd import PromptLoader
+import traceback
+import json
+from langchain_openai import ChatOpenAI
 
 
 class BDDGenerationNode:
@@ -15,18 +15,17 @@ class BDDGenerationNode:
     Robust BDD generator and feature splitter.
 
     Responsibilities
-    ----------------
+    -----------------
     1) Take OpenAPI (from state.analysis)
     2) Ask LLM to convert it into Gherkin features
     3) Classify scenarios into:
-         - functional
-         - non_functional (@performance / @security)
+    - functional
+    - non_functional (@performance / @security)
     4) Write .feature files into:
-         bdd_tests/functional/
-         bdd_tests/non_functional/
+    bdd_tests/functional/
+    bdd_tests/non_functional/
     5) Store the whole combined Gherkin in state.feature_text
     """
-
     # Map labels like "(Security)" in scenario titles to tags
     LABEL_TO_TAG = {
         "happy path": "@smoke",
@@ -42,80 +41,39 @@ class BDDGenerationNode:
 
     # Tags that we treat as NON-functional
     NON_FUNCTIONAL_TAGS = {"@security", "@performance"}
+    
+    
+    MAX_REFINEMENT_ROUNDS = 1
 
     def __init__(self, output_dir: str = "bdd_tests/features"):
         load_dotenv()
         self.output_dir = output_dir
         model = os.getenv("MODEL", "gpt-4.1")
-
-        try:
-            self.llm = ChatOpenAI(model=model, temperature=0) if ChatOpenAI else None
-            self.tools = []
-
-            # Optional tool – currently we mostly call the LLM directly
-            self.system_prompt = (
-                        "You are a Senior QA Engineer specializing in Behavior-Driven Development (BDD) "
-                        "and AI-assisted API testing. Your job is to convert the given OpenAPI 3.0 YAML "
-                        "into comprehensive Gherkin test scenarios.\n\n"
-                        "Follow these rules strictly:\n"
-                        "1 Output must be in **pure Gherkin syntax** — no markdown, no explanations.\n"
-                        "2 Each `Feature:` corresponds to an API resource or module.\n"
-                        "3 Each endpoint must include:\n"
-                        "   - **Happy Path**: Valid request and successful response.\n"
-                        "   - **Edge Cases**: Boundary values, nulls, optional params, etc.\n"
-                        "   - **Negative/Error**: Invalid input, missing fields, auth failure, etc.\n"
-                        "   - **Security**: OWASP API Security Top 10 vulnerabilities (e.g., Injection, Broken Auth).\n"
-                        "   - **Performance**: Assertions on latency or response time.\n"
-                        "4 Tag scenarios using @security, @performance, @smoke, @edge, @negative where appropriate. "
-                        "5 Generate schema-compliant **mock data** for each request body.\n"
-                        "6 Use clear, readable step wording: Given / When / Then.\n"
-                        "7 Do not omit any endpoint.\n"
-                        "8 Start the response directly with `Feature:` — no text before that."
-                    )
-        #  self.system_prompt = (
-        #         "Convert the given OpenAPI spec into pure Gherkin features. "
-                
-        #         "Return ONLY valid Gherkin text without explanations."
-        #     )
-
-            try:
-                self.agent = (
-                        create_agent(
-                            model=self.llm,
-                            tools=self.tools,
-                            system_prompt=self.system_prompt,
-                        )
-                        if create_agent and self.llm
-                        else None
-                        )
-            except Exception as e:
-                       
-                        self.agent = None
-        except Exception as e:
         
-            self.llm = None
-            self.agent = None
+        self.llm = ChatOpenAI(model=model, temperature=0)
+        self.judge_llm = ChatOpenAI(model=model, temperature=0)
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     # Fallback mock generator (used when LLM / OpenAPI is not available)
-    # ------------------------------------------------------------------
-    def _mock_bdd_generator(self, openapi_spec: str) -> str:
-        return """Feature: Default API Endpoint
+    # ---------------------------------------------------------------------
+    async def _mock_bdd_generator(self) -> str:
+        return """[PLACE HOLDER]
+Feature: Default API Endpoint
 
-  @smoke
-  Scenario: Happy Path
+@smoke
+Scenario: Happy Path
     Given an API endpoint "/example"
     When I send a valid POST request
     Then I should receive a 200 OK response
 
-  @performance
-  Scenario: Response time baseline
+@performance
+Scenario: Response time baseline
     Given an API endpoint "/example"
     When I measure a valid POST request
     Then response time should be under 500 milliseconds
 
-  @security
-  Scenario: SQL Injection attempt
+@security
+Scenario: SQL Injection attempt
     Given an API endpoint "/example"
     When I send a malicious payload "' OR 1=1 --"
     Then the API should respond with a 4xx or sanitized response
@@ -203,6 +161,8 @@ class BDDGenerationNode:
         # Split on "Feature:" boundaries
         feature_blocks = re.split(r"(?=Feature:)", gherkin_text)
         written = []
+        usedFuncFilenames = set()
+        usedNonFuncFilenames = set()
 
         for block in feature_blocks:
             block = block.strip()
@@ -216,14 +176,11 @@ class BDDGenerationNode:
             # ------------------ Feature header ------------------
             name_line = lines[0]
             feat_title = name_line.replace("Feature:", "").strip()
-            safe_file = re.sub(r"\s+", "_", feat_title.lower()) + ".feature"
-            # print(f"[DEBUG] Processing Feature: {feat_title}", file=sys.stderr)
-
-            # We want human-readable headers:
-            #   Feature: XYZ
-            #     # Functional scenarios
-            #   or
-            #     # Non-functional scenarios
+            # safe_file = re.sub(r"\s+", "_", feat_title.lower()) + ".feature"
+            base_name = re.sub(r'[^a-z0-9]+', '_', feat_title.lower())
+            if len(base_name) > 50:
+                base_name = base_name[:50]
+            
             func_buffer = [
                 f"Feature: {feat_title}",
                 "",
@@ -343,6 +300,13 @@ class BDDGenerationNode:
 
             # ------------------ Write files per category ------------------
             if has_func:
+                safe_file = f"{base_name}.feature"
+                counter = 1
+                while safe_file in usedFuncFilenames:
+                    safe_file = f"{base_name}_{counter}.feature"
+                    counter += 1
+ 
+                usedFuncFilenames.add(safe_file)
                 path = os.path.join(func_dir, safe_file)
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write("\n".join(func_buffer).rstrip() + "\n")
@@ -350,6 +314,13 @@ class BDDGenerationNode:
                 print(f"[DEBUG]     SAVED functional/{safe_file}", file=sys.stderr)
 
             if has_nonf:
+                safe_file = f"{base_name}.feature"
+                counter = 1
+                while safe_file in usedNonFuncFilenames:
+                    safe_file = f"{base_name}_{counter}.feature"
+                    counter += 1
+ 
+                usedNonFuncFilenames.add(safe_file)
                 path = os.path.join(nonf_dir, safe_file)
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write("\n".join(nonf_buffer).rstrip() + "\n")
@@ -358,15 +329,17 @@ class BDDGenerationNode:
 
         print(f"[DEBUG] Total files written: {len(written)}", file=sys.stderr)
         return written
-
-    # ------------------------------------------------------------------
+    
+    
+    # ---------------------------------------------------------------------
     # Main entrypoint used by the graph (main.py)
-    # ------------------------------------------------------------------
-    def __call__(self, state):
+    # ---------------------------------------------------------------------
+    async def __call__(self, state):
         """
-        state.analysis   = OpenAPI YAML (string)   ← from CodeAnalysisNode
-        state.feature_text = combined Gherkin text ← we set here
+        state.analysis = OpenAPI YAML (string)  <- from CodeAnalysisNode
+        state.feature_text = combined Gherkin text <- we set here
         """
+
         openapi_spec = getattr(state, "analysis", None)
 
         # sanity: if not OpenAPI-like, fallback to mock
@@ -378,44 +351,115 @@ class BDDGenerationNode:
             looks_like_openapi = False
 
         if not looks_like_openapi:
-            feature_text = self._mock_bdd_generator("")
+            feature_text = await self._mock_bdd_generator()
             state.feature_text = feature_text
             self._write_tagged_features(state.project_path, feature_text)
             return state
 
-        feature_text = None
-
-        # ------------------ Call LLM agent ------------------
         try:
-            messages = [
-                SystemMessage(content=self.system_prompt),
-                HumanMessage(
-                    content=f"Generate advanced BDD test cases (in Gherkin) for this OpenAPI 3.0 spec:\n\n{openapi_spec}"
-                )
-            ]
- 
-            result = self.agent.invoke({"messages": messages})
- 
-            # 🧠 Normalize outputs like CodeAnalysisNode
-            if isinstance(result, dict) and "messages" in result:
-                ai_messages = [
-                    msg for msg in result["messages"]
-                    if getattr(msg, "type", None) == "ai" or msg.__class__.__name__ == "AIMessage"
-                ]
-                feature_text = ai_messages[-1].content.strip() if ai_messages else ""
-            elif hasattr(result, "content"):
-                feature_text = result.content.strip()
-            elif isinstance(result, str):
-                feature_text = result.strip()
-            else:
-                feature_text = str(result or "").strip()
- 
+            feature_text = await self._generate_with_feedback_loop(openapi_spec)
         except Exception as e:
-            print(f"⚠️ LLM Error in BDDGenerationNode: {e}")
-            feature_text = self._mock_bdd_generator(openapi_spec)
+            print(
+                f"LLM Error in BDDGenerationNode: {e}",
+                file=sys.stderr,
+                flush=True,
+            )
+            feature_text = self._mock_bdd_generator()
 
-
-        # Save on state and write categorized .feature files
         state.feature_text = feature_text
         self._write_tagged_features(state.project_path, feature_text)
         return state
+
+    # ---------------------------------------------------------------------
+    # ORIGINAL GENERATION
+    # ---------------------------------------------------------------------
+    async def _generate_initial_bdd(self, openapi_spec: str) -> str:
+        rendered_prompt = PromptLoader().prompt_loader(
+            "bdd/bdd_generation.jinja"
+        )
+
+        if not isinstance(rendered_prompt, str):
+            raise ValueError("bdd_generation.jinja returned invalid jinja")
+
+        messages = [
+            SystemMessage(content=rendered_prompt),
+            HumanMessage(
+                content=f"Your job is to convert the given OpenAPI 3.0 specification into comprehensive BDD Gherkin test scenarios.\n\n{openapi_spec}"
+            ),
+        ]
+
+        result = await self.llm.ainvoke(messages)
+        return result.content.replace("```gherkin", "").replace("```", "").strip()
+
+    # ---------------------------------------------------------------------
+    # NEW: FEEDBACK LOOP CONTROLLER
+    # ---------------------------------------------------------------------
+    async def _generate_with_feedback_loop(self, openapi_spec: str) -> str:
+        feature_text = await self._generate_initial_bdd(openapi_spec)
+
+        for _ in range(self.MAX_REFINEMENT_ROUNDS):
+            judge_result = await self._judge_bdd(openapi_spec, feature_text)
+
+            missing_endpoints = judge_result.get("missing_endpoints", [])
+
+            if judge_result.get("verdict") == "PASS" and not missing_endpoints:
+                return feature_text
+
+            for endpoint in missing_endpoints:
+                refinement_prompt = PromptLoader().prompt_loader(
+                    "bdd/bdd_refinement_prompt.jinja",
+                    context={
+                        "openapi_spec": openapi_spec,
+                        "missing_endpoint": endpoint.get("path"),
+                        "missing_method": endpoint.get("method"),
+                        "instructions": judge_result.get("refinement_instructions", ""),
+                    },
+                )
+
+                if not isinstance(refinement_prompt, str):
+                    raise ValueError("bdd_refinement.jinja returned invalid prompt")
+
+                messages = [
+                    HumanMessage(content=refinement_prompt)
+                ]
+
+                response = await self.llm.ainvoke(messages)
+                feature_text = (
+                    feature_text.rstrip()
+                    + "\n\n"
+                    + response.content.replace("```gherkin", "").replace("```", "").strip()
+                )
+
+        return feature_text
+
+    # ---------------------------------------------------------------------
+    # NEW: JUDGE LOGIC
+    # ---------------------------------------------------------------------
+    async def _judge_bdd(self, openapi_spec: str, feature_text: str) -> dict:
+        judge_prompt = PromptLoader().prompt_loader(
+            "bdd/bdd_judge.jinja",
+            context={
+                "openapi_spec": openapi_spec,
+                "feature_text": feature_text,
+            },
+        )
+
+        if not isinstance(judge_prompt, str):
+            raise ValueError("judge_prompt.jinja returned invalid prompt")
+
+        messages = [
+            SystemMessage(content=judge_prompt),
+            HumanMessage(content=feature_text),
+        ]
+
+        result = await self.judge_llm.ainvoke(messages)
+
+        try:
+            response = result.content
+            start = response.find("{")
+            end = response.rfind("}")
+            if start == -1 or end == -1 or start > end:
+                raise ValueError("No json found in response")
+            return json.loads(response[start: end + 1])
+        except json.JSONDecodeError as e:
+            raise ValueError("no valid json has been passed", e)

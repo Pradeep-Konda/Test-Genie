@@ -1,0 +1,96 @@
+You are generating BDD Gherkin for missing endpoint using the OpenAPI 3.0 specifications.
+
+OPENAPI SPEC (AUTHORITATIVE SOURCE):
+{{ openapi_spec }}
+
+
+MISSING ENDPOINT (MUST BE ADDED):
+{{ missing_endpoint }} and {{ missing_method }}
+
+
+Apply these refinement instructions STRICTLY:
+{{ instructions }}
+
+
+Follow these rules strictly: \n
+1 Output must be in **pure Gherkin syntax** — no markdown, no explanations. \n
+2 Each Feature: corresponds to an API resource or module. \n
+3 FOR EACH missing_endpoint, GENERATE THESE SCENARIO TYPES: \n
+    1. @smoke - Happy path with valid data and successful response \n
+    2. @edge - Boundary values, empty strings, nulls, optional params omitted \n
+    3. @negative - Invalid data, missing required fields, malformed input (expect 4xx) \n
+    4. @security - OWASP API Top 10: SQL injection, auth bypass, BOLA, mass assignment \n
+    5. @performance - Response time assertions (e.g., under 500ms) \n
+4 STEP PATTERNS (use consistently): \n
+   Given the API endpoint \"{{missing_endpoint}}\" \n
+   And the request body is: \n
+     \"\"\" \n
+     <valid JSON> \n
+     \"\"\" \n
+   When I send a {{missing_method}} request \n
+   Then the response status should be {code} \n
+   And the response should contain \"{field}\" \n
+   And the response time should be under {ms} milliseconds \n
+
+5 Tag scenarios using @security, @performance, @smoke, @edge, @negative where appropriate. \n
+6 Tags MUST be placed IMMEDIATELY ABOVE each 'Scenario:' line and all tags for each Scenario should be on same line. \n
+   - EXAMPLE: \n
+         Feature: User Management API \n
+         \n
+         @smoke \n
+         Scenario: Create user with valid data \n
+            Given the API endpoint \"/api/users\" \n
+            And the request body is: \n
+            \"\"\"\n
+            {\"name\": \"Alice\", \"email\": \"alice@example.com\"} \n
+            \"\"\"\n
+            When I send a POST request\n
+            Then the response status should be 201 \n
+            And the response should contain \"id\" \n
+         \n
+         @security \n
+         Scenario: SQL injection in search parameter \n
+            Given the API endpoint \"/api/users?q=' OR '1'='1\" \n
+            When I send a GET request \n
+            Then the response status should be 400 or 422 \n
+         \n
+         @edge \n
+         Scenario: Create user with maximum allowed filed strength \n
+            Given the API endpoint \"/api/users\"  \n
+            And the request body is: \n
+            \"\"\" \n
+            {\"name\": \"AAAAAAAA\", \"email\": \"alice@example.com\"} \n
+            \"\"\" \n
+            When I send a POST request \n
+            Then the response status should be 201 \n
+         \n
+         @negative \n
+         Scenario: Create a user with missing required field email \n
+            Given the API endpoint \"/api/users\"  \n
+            And the request body is: \n
+            \"\"\" \n
+            {\"name\": \"Bob\"} \n
+            \"\"\" \n
+            When I send a POST request \n
+            Then the response status should be 400 or 422 \n
+         \n
+         @performance \n
+         Scenario: Fetch user list with within the acceptable time \n
+            Given the API endpoint \"/api/users\" \n
+            When I send a GET request \n
+            Then the response status should be 200 \n
+            And the response time should be less than 500 ms \n
+         \n
+7 Generate schema-compliant **mock data** for each request body. \n
+   - And the request body should be in below format with Gherkin Compliant Syntax: \n
+         \"\"\" \n
+         {\"key\": \"value\"} \n
+         \"\"\" \n
+   - for content type multipart/formdata request body should be in below format with Gherkin Compliant Syntax: \n
+         \"\"\" \n
+         {\"key\": \"file_name\"} \n
+         \"\"\" \n
+8 RULES: \n
+- For missing_endpoint give me atleast 4 scenarios in all cases \n
+- Generate realistic mock data that matches schema types \n
+- Use exact paths from the OpenAPI spec \n

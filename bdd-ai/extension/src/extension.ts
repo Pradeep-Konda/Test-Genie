@@ -194,6 +194,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   treeView.onDidChangeVisibility((event) => {
     if (event.visible) {
+
+      vscode.commands.executeCommand("featureExplorer.refresh");
+      
       BDDPanel.show(
         "🧠 BDD Feature Explorer\n\n" +
         "• Select a `.feature` file to edit\n" +

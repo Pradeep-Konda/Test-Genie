@@ -7,6 +7,7 @@ from typing import Optional
 import json
 import sys
 import os
+import asyncio
 
 
 @dataclass
@@ -19,19 +20,19 @@ class GraphState:
 
 
 
-def run_generation_phase(state: GraphState) -> GraphState:
+async def run_generation_phase(state: GraphState) -> GraphState:
     analysis_node = CodeAnalysisNode()
     bdd_node = BDDGenerationNode()
 
     # Agent handles reading files from project_path internally
-    state = analysis_node(state)
-    state = bdd_node(state)
+    state = await analysis_node(state)
+    state = await bdd_node(state)
     return state
 
 
-def run_execution_phase(state: GraphState) -> GraphState:
+async def run_execution_phase(state: GraphState) -> GraphState:
     execution_node = TestExecutionNode()
-    state = execution_node(state)
+    state = await execution_node(state)
     return state
 
 
@@ -51,7 +52,7 @@ if __name__ == "__main__":
 
     try:
         if phase == "generate":
-            gen_state = run_generation_phase(state)
+            gen_state = asyncio.run(run_generation_phase(state))
             print(json.dumps({
                 "analysis": gen_state.analysis,
                 "feature_text": gen_state.feature_text
@@ -64,7 +65,7 @@ if __name__ == "__main__":
                     updatedFeatureText = f.read()
                 state.feature_text = updatedFeatureText
 
-            final_state = run_execution_phase(state)
+            final_state = asyncio.run(run_execution_phase(state)) 
             print(json.dumps({
                 "execution_output": final_state.execution_output
             }))
