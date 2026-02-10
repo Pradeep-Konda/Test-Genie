@@ -3,11 +3,54 @@ import * as fs from "fs";
 import * as path from "path";
 import { generateTests, executeTests } from "./api";
 import { BDDPanel } from "./panel";
+import { EditTracker } from "./editTracker";
 
 let isGenerating = false;
 let isRunningTests = false;
+let editTracker: EditTracker;
+let isSavingFromPanel = false;
 
 export function activate(context: vscode.ExtensionContext) {
+
+  editTracker = new EditTracker(vscode.workspace.workspaceFolders?.[0].uri.fsPath || "");
+
+  const saveListener = vscode.workspace.onDidSaveTextDocument((doc) => {
+    try {
+      // 1. Ignore saves triggered by BDD panel
+      if (isSavingFromPanel) return;
+
+      // 2. Only track .feature files under bdd_tests
+      if (!doc.fileName.endsWith(".feature")) return;
+      if (!doc.fileName.includes("bdd_tests")) return;
+
+      // 3. Guard: file must still exist on disk
+      if (!fs.existsSync(doc.fileName)) return;
+
+      const newContent = doc.getText();
+
+      // 4. Get previous content from history (best-effort)
+      const history = editTracker.getFileHistory(doc.fileName);
+      const lastEntry = history.length > 0
+        ? history[history.length - 1]
+        : undefined;
+
+      const oldContent = lastEntry?.contentSnapshot ?? "";
+
+      // 5. Log edit (no-op detection handled inside EditTracker)
+      editTracker.logEdit(
+        doc.fileName,
+        oldContent,
+        newContent,
+        "external_edit"
+      );
+    } catch (err: any) {
+      // Never interrupt user workflow
+      console.warn(
+        "External edit history tracking failed:",
+        err?.message || err
+      );
+    }
+  });
 
   function copyFolderRecursiveSync(src: string, dest: string) {
     if (!fs.existsSync(dest)) {
@@ -45,11 +88,20 @@ export function activate(context: vscode.ExtensionContext) {
   const saveFileCmd = vscode.commands.registerCommand(
     "extension.saveThisFeature",
     async (filePath: string, updatedText: string) => {
+      isSavingFromPanel = true;
       try {
+        const oldContent = fs.existsSync(filePath)? fs.readFileSync(filePath, "utf8") : "";
         fs.writeFileSync(filePath, updatedText, "utf8");
         vscode.window.showInformationMessage("💾 Feature file saved.");
+        try {
+        editTracker.logEdit(filePath, oldContent, updatedText, "manual_edit");
+        } catch (historyErr: any) {
+          console.warn("Edit history logging failed:", historyErr.message);
+        }
       } catch (err: any) {
         vscode.window.showErrorMessage("❌ Failed to save feature file: " + err.message);
+      } finally {
+        isSavingFromPanel = false;
       }
     }
   );
@@ -112,6 +164,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     const workspacePath = workspace.uri.fsPath;
 
+    const preSnapshot = editTracker.snapshotBeforeGeneration();
+
     vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, 
         title: "🔍 Generating BDD Tests...",
@@ -120,7 +174,12 @@ export function activate(context: vscode.ExtensionContext) {
       async (progress, token) => {
         try {
           const result = await generateTests(workspacePath, token);
-          const panel = BDDPanel.show(result.feature_text || "No tests generated");
+          try {
+          editTracker.logGenerationChanges(preSnapshot);
+        } catch (historyErr: any) {
+          console.warn("AI generation history logging failed:", historyErr.message);
+        }
+          const panel = BDDPanel.show(result.feature_text || "No tests generated", false, editTracker);
           vscode.window.showInformationMessage("✅ Feature Generation Complete!");
 
         } catch (err: any) {
@@ -202,7 +261,8 @@ export function activate(context: vscode.ExtensionContext) {
         "• Select a `.feature` file to edit\n" +
         "• Generate tests using AI\n" +
         "• Run BDD tests directly from here",
-        true
+        true,
+        editTracker
       );
     }
   });
@@ -220,14 +280,14 @@ export function activate(context: vscode.ExtensionContext) {
 
     if (stat.isFile() && fullPath.endsWith(".feature")) {
       const text = fs.readFileSync(fullPath, "utf-8");
-      const panel = BDDPanel.show(text);
+      const panel = BDDPanel.show(text, false, editTracker);
       panel.setFilePath(fullPath);
     } else if (stat.isDirectory()) {
       const features = getFeatureFiles(fullPath);
       const combined = features
         .map((f) => fs.readFileSync(f, "utf-8"))
         .join("\n\n");
-      const panel = BDDPanel.show(combined || "📁 No .feature files found.");
+      const panel = BDDPanel.show(combined || "📁 No .feature files found.", false, editTracker);
       panel.setFilePath(null);
     }
   });
@@ -241,7 +301,8 @@ export function activate(context: vscode.ExtensionContext) {
     saveFileCmd,
     saveVersionFolderCmd,
     treeView,
-    executeBDD
+    executeBDD,
+    saveListener
   );
 }
 
